@@ -4,6 +4,10 @@ import json
 from typing import Dict, List, Optional, Tuple
 import re
 from datetime import datetime
+import io
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 # Пытаемся импортировать RAG систему, но не блокируем запуск если она недоступна
 try:
@@ -1281,8 +1285,168 @@ class MarketingAnalyticsAgent:
             "timestamp": datetime.now().isoformat()
         })
         
-        # Возвращаем отчет и SQL запрос отдельно
-        return report, sql_query
+        # Генерируем Excel отчет
+        excel_data = self.generate_excel_report(analysis, question)
+        
+        # Возвращаем отчет, SQL запрос и Excel данные
+        return report, sql_query, excel_data
+    
+    def generate_excel_report(self, analysis: Dict, question: str) -> bytes:
+        """
+        Генерация Excel отчета на основе анализа данных
+        """
+        wb = Workbook()
+        
+        # Удаляем дефолтный лист
+        wb.remove(wb.active)
+        
+        # Создаем лист с общей статистикой
+        summary_sheet = wb.create_sheet("Общая статистика")
+        summary = analysis.get("summary", {})
+        
+        # Заголовок
+        summary_sheet['A1'] = f"Отчет по запросу: {question}"
+        summary_sheet['A1'].font = Font(bold=True, size=14)
+        summary_sheet.merge_cells('A1:D1')
+        
+        # Общая статистика
+        row = 3
+        summary_sheet[f'A{row}'] = "Всего кампаний"
+        summary_sheet[f'B{row}'] = summary.get('campaigns_count', 0)
+        row += 1
+        
+        summary_sheet[f'A{row}'] = "Общие показы"
+        summary_sheet[f'B{row}'] = summary.get('total_impressions', 0)
+        row += 1
+        
+        summary_sheet[f'A{row}'] = "Общие клики"
+        summary_sheet[f'B{row}'] = summary.get('total_clicks', 0)
+        row += 1
+        
+        summary_sheet[f'A{row}'] = "Общий расход (₽)"
+        summary_sheet[f'B{row}'] = summary.get('total_cost', 0)
+        row += 1
+        
+        summary_sheet[f'A{row}'] = "Общие визиты"
+        summary_sheet[f'B{row}'] = summary.get('total_visits', 0)
+        row += 1
+        
+        summary_sheet[f'A{row}'] = "Средний CTR (%)"
+        summary_sheet[f'B{row}'] = summary.get('avg_ctr', 0)
+        row += 1
+        
+        summary_sheet[f'A{row}'] = "Средний CPC (₽)"
+        summary_sheet[f'B{row}'] = summary.get('avg_cpc', 0)
+        
+        # Стили для заголовков
+        header_font = Font(bold=True)
+        header_fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+        
+        for cell in summary_sheet['A3:A9']:
+            cell.font = header_font
+            cell.fill = header_fill
+        
+        # Создаем лист с детальной статистикой по кампаниям
+        if "campaigns" in summary and summary["campaigns"]:
+            campaigns_sheet = wb.create_sheet("Детальная статистика")
+            
+            # Заголовки
+            headers = ["Кампания", "Площадка", "Показы", "Клики", "Расход (₽)", "Визиты", "CTR (%)", "CPC (₽)"]
+            for col, header in enumerate(headers, 1):
+                cell = campaigns_sheet.cell(row=1, column=col)
+                cell.value = header
+                cell.font = header_font
+                cell.fill = header_fill
+            
+            # Данные
+            for row_idx, campaign in enumerate(summary["campaigns"], 2):
+                campaigns_sheet.cell(row=row_idx, column=1, value=campaign.get('campaign_name', '—'))
+                campaigns_sheet.cell(row=row_idx, column=2, value=campaign.get('platform', '—'))
+                campaigns_sheet.cell(row=row_idx, column=3, value=campaign.get('impressions', 0))
+                campaigns_sheet.cell(row=row_idx, column=4, value=campaign.get('clicks', 0))
+                campaigns_sheet.cell(row=row_idx, column=5, value=campaign.get('cost', 0))
+                campaigns_sheet.cell(row=row_idx, column=6, value=campaign.get('visits', 0))
+                campaigns_sheet.cell(row=row_idx, column=7, value=campaign.get('ctr', 0))
+                campaigns_sheet.cell(row=row_idx, column=8, value=campaign.get('cpc', 0))
+            
+            # Автоподбор ширины столбцов
+            for column in campaigns_sheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                campaigns_sheet.column_dimensions[column_letter].width = adjusted_width
+        
+        # Создаем лист с анализом по площадкам
+        if "platforms" in summary and summary["platforms"]:
+            platforms_sheet = wb.create_sheet("Анализ по площадкам")
+            
+            # Заголовки
+            headers = ["Площадка", "Показы", "Клики", "Расход (₽)", "Визиты", "CTR (%)", "CPC (₽)"]
+            for col, header in enumerate(headers, 1):
+                cell = platforms_sheet.cell(row=1, column=col)
+                cell.value = header
+                cell.font = header_font
+                cell.fill = header_fill
+            
+            # Данные
+            for row_idx, platform in enumerate(summary["platforms"], 2):
+                platforms_sheet.cell(row=row_idx, column=1, value=platform.get('platform', '—'))
+                platforms_sheet.cell(row=row_idx, column=2, value=platform.get('impressions', 0))
+                platforms_sheet.cell(row=row_idx, column=3, value=platform.get('clicks', 0))
+                platforms_sheet.cell(row=row_idx, column=4, value=platform.get('cost', 0))
+                platforms_sheet.cell(row=row_idx, column=5, value=platform.get('visits', 0))
+                platforms_sheet.cell(row=row_idx, column=6, value=platform.get('ctr', 0))
+                platforms_sheet.cell(row=row_idx, column=7, value=platform.get('cpc', 0))
+            
+            # Автоподбор ширины столбцов
+            for column in platforms_sheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                platforms_sheet.column_dimensions[column_letter].width = adjusted_width
+        
+        # Создаем лист с инсайтами и рекомендациями
+        insights_sheet = wb.create_sheet("Инсайты и рекомендации")
+        
+        # Инсайты
+        insights_sheet['A1'] = "Ключевые инсайты"
+        insights_sheet['A1'].font = Font(bold=True, size=12)
+        
+        row = 3
+        if analysis.get("insights"):
+            for insight in analysis["insights"]:
+                insights_sheet[f'A{row}'] = f"• {insight}"
+                row += 1
+        
+        # Рекомендации
+        row += 1
+        insights_sheet[f'A{row}'] = "Рекомендации"
+        insights_sheet[f'A{row}'].font = Font(bold=True, size=12)
+        
+        row += 2
+        if analysis.get("recommendations"):
+            for rec in analysis["recommendations"]:
+                insights_sheet[f'A{row}'] = f"• {rec}"
+                row += 1
+        
+        # Сохраняем в bytes
+        excel_buffer = io.BytesIO()
+        wb.save(excel_buffer)
+        excel_buffer.seek(0)
+        
+        return excel_buffer.getvalue()
     
     def get_conversation_history(self) -> List[Dict]:
         """Получение истории диалога"""

@@ -236,6 +236,16 @@ with chat_container:
         else:
             with st.chat_message("assistant"):
                 st.markdown(message["content"])
+                
+                # Кнопка скачивания Excel
+                if "excel_data" in message and message["excel_data"]:
+                    st.download_button(
+                        label="📊 Скачать Excel отчет",
+                        data=message["excel_data"],
+                        file_name=f"отчет_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                
                 if "sql_query" in message and message["sql_query"]:
                     with st.expander("🔍 Показать SQL запрос", expanded=False):
                         # Форматируем SQL запрос для лучшей читаемости
@@ -289,10 +299,12 @@ if st.session_state.pending_campaign_select:
                     df = agent.execute_query(sql_query)
                     analysis = agent.analyze_data(df, str(st.session_state.pending_user_question))
                     response = agent.generate_report(analysis, str(st.session_state.pending_user_question), sql_query)
+                    excel_data = agent.generate_excel_report(analysis, str(st.session_state.pending_user_question))
                     # SQL запрос передается отдельно
                 else:
                     response = "❌ Ошибка: агент недоступен"
                     sql_query = ""
+                    excel_data = None
             else:
                 # Формируем SQL запрос только для выбранной кампании
                 sql_query = f"SELECT \"Название кампании\" as campaign_name, \"Площадка\" as platform, SUM(\"Показы\") as impressions, SUM(\"Клики\") as clicks, SUM(\"Расход до НДС\") as cost, SUM(\"Визиты\") as visits, ROUND(SUM(\"Клики\") * 100.0 / SUM(\"Показы\"), 2) as ctr, ROUND(SUM(\"Расход до НДС\") / SUM(\"Клики\"), 2) as cpc FROM campaign_metrics WHERE \"Название кампании\" = '{selected_campaign}' GROUP BY \"Название кампании\", \"Площадка\" ORDER BY \"Название кампании\" ASC"
@@ -300,14 +312,17 @@ if st.session_state.pending_campaign_select:
                     df = agent.execute_query(sql_query)
                     analysis = agent.analyze_data(df, f"Сделай отчет по кампании {selected_campaign}")
                     response = agent.generate_report(analysis, f"Сделай отчет по кампании {selected_campaign}", sql_query)
+                    excel_data = agent.generate_excel_report(analysis, f"Сделай отчет по кампании {selected_campaign}")
                     # SQL запрос передается отдельно
                 else:
                     response = "❌ Ошибка: агент недоступен"
                     sql_query = ""
+                    excel_data = None
             st.session_state.chat_history.append({
                 "role": "assistant",
                 "content": response,
-                "sql_query": sql_query
+                "sql_query": sql_query,
+                "excel_data": excel_data
             })
             st.session_state.pending_campaign_select = None
             st.session_state.pending_user_question = None
@@ -352,11 +367,12 @@ if user_question and not st.session_state.pending_campaign_select:
             # Если найдена только одна кампания, сразу показываем отчет
             st.session_state.chat_history.append({"role": "user", "content": user_question})
             with st.spinner("🤖 Агент анализирует данные..."):
-                response, sql_query = agent.process_question(user_question)
+                response, sql_query, excel_data = agent.process_question(user_question)
             st.session_state.chat_history.append({
                 "role": "assistant",
                 "content": response,
-                "sql_query": sql_query
+                "sql_query": sql_query,
+                "excel_data": excel_data
             })
             st.rerun()
         else:
