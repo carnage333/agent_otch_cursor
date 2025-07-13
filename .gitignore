@@ -42,4 +42,4 @@ Thumbs.db
 *.pem
 
 # База данных (исключаем из git)
-# marketing_analytics.db 
+marketing_analytics.db 
