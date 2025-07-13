@@ -24,6 +24,23 @@ except ImportError:
     OPENAI_AVAILABLE = False
     print("OpenAI недоступен, будет использоваться локальная RAG система")
 
+# Пытаемся импортировать бесплатные LLM
+try:
+    import requests
+    import json
+    FREE_LLM_AVAILABLE = True
+except ImportError:
+    FREE_LLM_AVAILABLE = False
+    print("Библиотека requests недоступна для бесплатных LLM")
+
+# Пытаемся импортировать Ollama
+try:
+    import ollama
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+    print("Ollama недоступен, будет использоваться Hugging Face или локальная RAG система")
+
 from marketing_goals import marketing_goals
 
 class MarketingAnalyticsAgent:
@@ -1292,44 +1309,87 @@ class MarketingAnalyticsAgent:
             report = f"# 📋 Отчет по запросу: {question}\n\n"
             report += "Нет данных для анализа по вашему запросу.\n\n"
         
-        # Используем RAG и OpenAI для улучшения отчетов
+        # Используем различные LLM для улучшения отчетов
         should_use_enhancement = not has_data or is_asking_about_terms or has_data
         
-        # Сначала пробуем OpenAI GPT
-        if should_use_enhancement and self.openai_available:
+        # Подготавливаем данные для контекста
+        data_summary = None
+        if has_data and not df.empty:
+            data_summary = {
+                "total_rows": len(df),
+                "total_impressions": df.get("Показы", pd.Series()).sum() if "Показы" in df.columns else 0,
+                "total_clicks": df.get("Клики", pd.Series()).sum() if "Клики" in df.columns else 0,
+                "total_cost": df.get("Расход до НДС", pd.Series()).sum() if "Расход до НДС" in df.columns else 0,
+                "avg_ctr": df.get("CTR", pd.Series()).mean() if "CTR" in df.columns else 0,
+                "avg_cpc": df.get("CPC", pd.Series()).mean() if "CPC" in df.columns else 0
+            }
+        
+        # Приоритет использования LLM (от лучшего к худшему):
+        # 1. OpenAI GPT (платный, но лучший)
+        # 2. Ollama (бесплатный, локальный)
+        # 3. Hugging Face (бесплатный, онлайн)
+        # 4. Локальная RAG система
+        # 5. Простые шаблоны
+        
+        enhanced = False
+        
+        # 1. Пробуем OpenAI GPT
+        if should_use_enhancement and self.openai_available and not enhanced:
             try:
-                # Подготавливаем данные для контекста
-                data_summary = None
-                if has_data and not df.empty:
-                    data_summary = {
-                        "total_rows": len(df),
-                        "total_impressions": df.get("Показы", pd.Series()).sum() if "Показы" in df.columns else 0,
-                        "total_clicks": df.get("Клики", pd.Series()).sum() if "Клики" in df.columns else 0,
-                        "total_cost": df.get("Расход до НДС", pd.Series()).sum() if "Расход до НДС" in df.columns else 0,
-                        "avg_ctr": df.get("CTR", pd.Series()).mean() if "CTR" in df.columns else 0,
-                        "avg_cpc": df.get("CPC", pd.Series()).mean() if "CPC" in df.columns else 0
-                    }
-                
-                # Улучшаем отчет с помощью OpenAI
                 enhanced_report = self.enhance_report_with_openai(report, question, data_summary)
                 if enhanced_report != report:
                     report = enhanced_report
                     print("✅ Отчет улучшен с помощью OpenAI GPT")
+                    enhanced = True
             except Exception as e:
                 print(f"Ошибка при обращении к OpenAI: {e}")
         
-        # Если OpenAI недоступен, используем локальную RAG систему
-        elif should_use_enhancement and self.rag_system is not None:
+        # 2. Пробуем Ollama (бесплатный, локальный)
+        if should_use_enhancement and OLLAMA_AVAILABLE and not enhanced:
             try:
-                # Улучшаем отчет с помощью RAG системы
+                enhanced_report = self.enhance_report_with_ollama(report, question, data_summary)
+                if enhanced_report != report:
+                    report = enhanced_report
+                    print("✅ Отчет улучшен с помощью Ollama (бесплатный)")
+                    enhanced = True
+            except Exception as e:
+                print(f"Ошибка при обращении к Ollama: {e}")
+        
+        # 3. Пробуем Hugging Face (бесплатный, онлайн)
+        if should_use_enhancement and FREE_LLM_AVAILABLE and not enhanced:
+            try:
+                enhanced_report = self.enhance_report_with_huggingface(report, question, data_summary)
+                if enhanced_report != report:
+                    report = enhanced_report
+                    print("✅ Отчет улучшен с помощью Hugging Face (бесплатный)")
+                    enhanced = True
+            except Exception as e:
+                print(f"Ошибка при обращении к Hugging Face: {e}")
+        
+        # 4. Пробуем локальную RAG систему
+        if should_use_enhancement and self.rag_system is not None and not enhanced:
+            try:
                 enhanced_report = self.rag_system.enhance_report(report, question)
                 if enhanced_report != report:
                     report = enhanced_report
                     print("✅ Отчет улучшен с помощью локальной RAG системы")
+                    enhanced = True
             except Exception as e:
-                # Если RAG система недоступна, используем базовый отчет
                 print(f"Ошибка RAG системы: {e}")
-                pass
+        
+        # 5. Используем простые шаблоны (всегда доступно)
+        if should_use_enhancement and not enhanced:
+            try:
+                enhanced_report = self.enhance_report_with_local_llm(report, question, data_summary)
+                if enhanced_report != report:
+                    report = enhanced_report
+                    print("✅ Отчет улучшен с помощью локальных шаблонов")
+                    enhanced = True
+            except Exception as e:
+                print(f"Ошибка локального улучшения: {e}")
+        
+        if not enhanced:
+            print("ℹ️ Отчет не был улучшен внешними LLM, используется базовый отчет")
         
         # Сохраняем в историю
         self.conversation_history.append({
@@ -1903,6 +1963,198 @@ class MarketingAnalyticsAgent:
         except Exception as e:
             print(f"Ошибка при генерации рекомендаций с OpenAI: {e}")
             return []
+
+    def enhance_report_with_huggingface(self, report: str, question: str, data_summary: Dict = None) -> str:
+        """
+        Улучшает отчет с помощью бесплатного Hugging Face API
+        """
+        if not FREE_LLM_AVAILABLE:
+            return report
+        
+        try:
+            # Используем бесплатный API Hugging Face
+            API_URL = "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium"
+            
+            # Формируем промпт
+            prompt = f"""Ты опытный аналитик маркетинга. Улучши этот отчет:
+
+Вопрос: {question}
+Отчет: {report}
+
+Добавь:
+1. Ключевые инсайты
+2. Конкретные рекомендации
+3. Объяснение метрик
+4. Следующие шаги
+
+Ответ:"""
+
+            headers = {
+                "Authorization": "Bearer hf_xxx",  # Бесплатный токен
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "inputs": prompt,
+                "parameters": {
+                    "max_length": 500,
+                    "temperature": 0.7,
+                    "do_sample": True
+                }
+            }
+            
+            response = requests.post(API_URL, headers=headers, json=payload)
+            
+            if response.status_code == 200:
+                result = response.json()
+                if isinstance(result, list) and len(result) > 0:
+                    enhanced_text = result[0].get('generated_text', '')
+                    # Извлекаем только новую часть
+                    if enhanced_text.startswith(prompt):
+                        enhanced_text = enhanced_text[len(prompt):].strip()
+                    return enhanced_text if enhanced_text else report
+                else:
+                    return report
+            else:
+                print(f"Ошибка Hugging Face API: {response.status_code}")
+                return report
+                
+        except Exception as e:
+            print(f"Ошибка при обращении к Hugging Face: {e}")
+            return report
+
+    def enhance_report_with_ollama(self, report: str, question: str, data_summary: Dict = None) -> str:
+        """
+        Улучшает отчет с помощью локального Ollama
+        """
+        if not OLLAMA_AVAILABLE:
+            return report
+        
+        try:
+            # Формируем промпт
+            prompt = f"""Ты опытный аналитик маркетинга. Улучши этот отчет:
+
+Вопрос: {question}
+Отчет: {report}
+
+Добавь:
+1. Ключевые инсайты из данных
+2. Конкретные рекомендации по оптимизации
+3. Объяснение важных метрик
+4. Следующие шаги для улучшения
+
+Сохрани структуру отчета, но сделай его более информативным."""
+
+            # Используем Ollama с моделью llama2 или mistral
+            try:
+                response = ollama.chat(model='llama2', messages=[
+                    {
+                        'role': 'system',
+                        'content': 'Ты опытный аналитик маркетинга. Анализируй данные и давай конкретные рекомендации.'
+                    },
+                    {
+                        'role': 'user',
+                        'content': prompt
+                    }
+                ])
+                
+                enhanced_report = response['message']['content']
+                return enhanced_report if enhanced_report else report
+                
+            except Exception as e:
+                print(f"Ошибка Ollama (llama2): {e}")
+                # Пробуем другую модель
+                try:
+                    response = ollama.chat(model='mistral', messages=[
+                        {
+                            'role': 'system',
+                            'content': 'Ты опытный аналитик маркетинга.'
+                        },
+                        {
+                            'role': 'user',
+                            'content': prompt
+                        }
+                    ])
+                    
+                    enhanced_report = response['message']['content']
+                    return enhanced_report if enhanced_report else report
+                    
+                except Exception as e2:
+                    print(f"Ошибка Ollama (mistral): {e2}")
+                    return report
+                    
+        except Exception as e:
+            print(f"Ошибка при обращении к Ollama: {e}")
+            return report
+
+    def enhance_report_with_local_llm(self, report: str, question: str, data_summary: Dict = None) -> str:
+        """
+        Улучшает отчет с помощью простых локальных методов
+        """
+        try:
+            # Простое улучшение отчета с помощью шаблонов
+            enhanced_report = report
+            
+            # Добавляем инсайты на основе данных
+            if data_summary:
+                insights = []
+                
+                # Анализируем CTR
+                avg_ctr = data_summary.get('avg_ctr', 0)
+                if avg_ctr > 2:
+                    insights.append("• Высокий CTR указывает на эффективные креативы")
+                elif avg_ctr < 0.5:
+                    insights.append("• Низкий CTR требует оптимизации креативов")
+                else:
+                    insights.append("• Средний CTR, есть возможности для улучшения")
+                
+                # Анализируем CPC
+                avg_cpc = data_summary.get('avg_cpc', 0)
+                if avg_cpc < 50:
+                    insights.append("• Экономичный CPC, эффективные затраты")
+                elif avg_cpc > 200:
+                    insights.append("• Высокий CPC, требуется оптимизация")
+                else:
+                    insights.append("• Приемлемый CPC для данной ниши")
+                
+                # Анализируем расход
+                total_cost = data_summary.get('total_cost', 0)
+                if total_cost > 1000000:
+                    insights.append("• Крупный бюджет, требуется детальный анализ ROI")
+                elif total_cost < 100000:
+                    insights.append("• Небольшой бюджет, возможности для масштабирования")
+                
+                # Добавляем инсайты в отчет
+                if insights:
+                    enhanced_report += "\n\n## 💡 Ключевые инсайты\n\n"
+                    enhanced_report += "\n".join(insights)
+                    enhanced_report += "\n"
+            
+            # Добавляем рекомендации
+            recommendations = [
+                "• Регулярно анализируйте эффективность креативов",
+                "• Оптимизируйте таргетинг для повышения CTR",
+                "• Тестируйте разные подходы к рекламе",
+                "• Мониторьте конкурентов и их стратегии"
+            ]
+            
+            enhanced_report += "\n## 🎯 Рекомендации\n\n"
+            enhanced_report += "\n".join(recommendations)
+            enhanced_report += "\n"
+            
+            # Добавляем следующие шаги
+            enhanced_report += "\n## 📋 Следующие шаги\n\n"
+            enhanced_report += "1. **Анализ креативов** - изучите лучшие и худшие материалы\n"
+            enhanced_report += "2. **Оптимизация таргетинга** - уточните целевую аудиторию\n"
+            enhanced_report += "3. **A/B тестирование** - протестируйте новые подходы\n"
+            enhanced_report += "4. **Мониторинг конкурентов** - изучите их стратегии\n"
+            enhanced_report += "5. **Регулярный анализ** - установите еженедельные ревью\n"
+            
+            return enhanced_report
+            
+        except Exception as e:
+            print(f"Ошибка при локальном улучшении отчета: {e}")
+            return report
 
 # Пример использования
 if __name__ == "__main__":
