@@ -1313,6 +1313,24 @@ class MarketingAnalyticsAgent:
         """
         Генерация Excel отчета на основе анализа данных
         """
+        # Проверяем, есть ли данные для анализа
+        if not analysis or "error" in analysis:
+            # Если нет данных, создаем простой отчет с сообщением
+            if not OPENPYXL_AVAILABLE:
+                return self._generate_csv_report(analysis, question)
+            
+            wb = Workbook()
+            wb.remove(wb.active)
+            sheet = wb.create_sheet("Отчет")
+            sheet['A1'] = f"Отчет по запросу: {question}"
+            sheet['A1'].font = Font(bold=True, size=14)
+            sheet['A3'] = "Нет данных для анализа по вашему запросу."
+            
+            excel_buffer = io.BytesIO()
+            wb.save(excel_buffer)
+            excel_buffer.seek(0)
+            return excel_buffer.getvalue()
+        
         if not OPENPYXL_AVAILABLE:
             # Создаем CSV отчет как альтернативу Excel
             return self._generate_csv_report(analysis, question)

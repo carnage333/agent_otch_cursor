@@ -262,8 +262,7 @@ with chat_container:
                         file_name=file_name,
                         mime=mime_type
                     )
-                elif "excel_data" in message and (not message["excel_data"] or len(message["excel_data"]) == 0):
-                    st.info("📊 Отчет недоступен")
+                # Убираем сообщение "Отчет недоступен" так как отчет уже сгенерирован в тексте выше
                 
                 # Отображение дашборда
                 if "dashboard_data" in message and message["dashboard_data"]:
