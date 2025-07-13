@@ -7,20 +7,14 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# Импортируем нового интеллектуального агента
+# Импортируем старый рабочий агент
 try:
-    from intelligent_agent import IntelligentMarketingAgent
-    agent = IntelligentMarketingAgent()
+    from ai_agent import MarketingAnalyticsAgent
+    agent = MarketingAnalyticsAgent()
     AGENT_AVAILABLE = True
 except ImportError:
-    # Fallback к старому агенту
-    try:
-        from ai_agent import MarketingAnalyticsAgent
-        agent = MarketingAnalyticsAgent()
-        AGENT_AVAILABLE = True
-    except ImportError:
-        AGENT_AVAILABLE = False
-        st.error("❌ Ошибка загрузки агента")
+    AGENT_AVAILABLE = False
+    st.error("❌ Ошибка загрузки агента")
 
 # CSV отчеты всегда доступны
 
@@ -391,11 +385,8 @@ if st.session_state.pending_campaign_select:
                 ORDER BY "Название кампании" ASC
                 """
                 if agent:
-                    # Используем новый интеллектуальный агент
-                    response = agent.process_question(str(st.session_state.pending_user_question))
-                    sql_query = ""  # Новый агент не возвращает SQL отдельно
-                    excel_data = None  # Новый агент не генерирует CSV
-                    dashboard_data = None  # Новый агент не генерирует дашборд
+                    # Используем старый рабочий агент
+                    response, sql_query, excel_data, dashboard_data = agent.process_question(str(st.session_state.pending_user_question))
                     # SQL запрос передается отдельно
                 else:
                     response = "❌ Ошибка: агент недоступен"
@@ -407,11 +398,8 @@ if st.session_state.pending_campaign_select:
                 # Используем LIKE для более гибкого поиска
                 sql_query = f"SELECT \"Название кампании\" as campaign_name, \"Площадка\" as platform, SUM(\"Показы\") as impressions, SUM(\"Клики\") as clicks, SUM(\"Расход до НДС\") as cost, SUM(\"Визиты\") as visits, ROUND(SUM(\"Клики\") * 100.0 / SUM(\"Показы\"), 2) as ctr, ROUND(SUM(\"Расход до НДС\") / SUM(\"Клики\"), 2) as cpc FROM campaign_metrics WHERE \"Название кампании\" LIKE '%{selected_campaign}%' GROUP BY \"Название кампании\", \"Площадка\" ORDER BY \"Название кампании\" ASC"
                 if agent:
-                    # Используем новый интеллектуальный агент
-                    response = agent.process_question(f"Сделай отчет по кампании {selected_campaign}")
-                    sql_query = ""  # Новый агент не возвращает SQL отдельно
-                    excel_data = None  # Новый агент не генерирует CSV
-                    dashboard_data = None  # Новый агент не генерирует дашборд
+                    # Используем старый рабочий агент
+                    response, sql_query, excel_data, dashboard_data = agent.process_question(f"Сделай отчет по кампании {selected_campaign}")
                     # SQL запрос передается отдельно
                 else:
                     response = "❌ Ошибка: агент недоступен"
@@ -458,16 +446,8 @@ if user_question and st.session_state.pending_campaign_select:
 # --- Новая логика выбора кампании ---
 if user_question and not st.session_state.pending_campaign_select:
     if agent:
-        # Новый агент не имеет метода get_matching_campaigns, используем прямой обработчик
-        matching_campaigns = []
-        try:
-            # Пробуем обработать вопрос напрямую
-            response = agent.process_question(user_question)
-            # Если ответ не содержит ошибку, значит кампания найдена
-            if "❌" not in response and "не найдено" not in response.lower():
-                matching_campaigns = ["Кампания найдена"]
-        except:
-            matching_campaigns = []
+        # Используем старый метод поиска кампаний
+        matching_campaigns = agent.get_matching_campaigns(user_question)
         if len(matching_campaigns) > 1:
             st.session_state.pending_campaign_select = matching_campaigns
             st.session_state.pending_user_question = user_question
