@@ -5,6 +5,8 @@ from typing import Dict, List, Optional, Tuple
 import re
 from datetime import datetime
 import io
+import os
+import numpy as np
 
 # Пытаемся импортировать RAG систему, но не блокируем запуск если она недоступна
 try:
@@ -13,6 +15,14 @@ try:
 except ImportError:
     RAG_AVAILABLE = False
     print("RAG система недоступна, будет использоваться упрощенный режим")
+
+# Пытаемся импортировать OpenAI
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    print("OpenAI недоступен, будет использоваться локальная RAG система")
 
 from marketing_goals import marketing_goals
 
@@ -35,6 +45,24 @@ class MarketingAnalyticsAgent:
                 self.rag_system = None
         else:
             self.rag_system = None
+        
+        # Инициализируем OpenAI если доступен
+        if OPENAI_AVAILABLE:
+            try:
+                # Проверяем наличие API ключа
+                api_key = os.getenv('OPENAI_API_KEY')
+                if api_key:
+                    openai.api_key = api_key
+                    self.openai_available = True
+                    print("✅ OpenAI GPT доступен для улучшения отчетов")
+                else:
+                    self.openai_available = False
+                    print("⚠️ OpenAI API ключ не найден, будет использоваться локальная RAG система")
+            except Exception as e:
+                print(f"Ошибка инициализации OpenAI: {e}")
+                self.openai_available = False
+        else:
+            self.openai_available = False
     
     def _load_domain_knowledge(self) -> Dict:
         """Загрузка знаний предметной области"""
@@ -1264,19 +1292,43 @@ class MarketingAnalyticsAgent:
             report = f"# 📋 Отчет по запросу: {question}\n\n"
             report += "Нет данных для анализа по вашему запросу.\n\n"
         
-        # Используем RAG только в определенных случаях:
-        # 1. Нет данных для анализа ИЛИ
-        # 2. Пользователь явно спрашивает о терминах/метриках
-        should_use_rag = not has_data or is_asking_about_terms
+        # Используем RAG и OpenAI для улучшения отчетов
+        should_use_enhancement = not has_data or is_asking_about_terms or has_data
         
-        if should_use_rag and self.rag_system is not None:
+        # Сначала пробуем OpenAI GPT
+        if should_use_enhancement and self.openai_available:
+            try:
+                # Подготавливаем данные для контекста
+                data_summary = None
+                if has_data and not df.empty:
+                    data_summary = {
+                        "total_rows": len(df),
+                        "total_impressions": df.get("Показы", pd.Series()).sum() if "Показы" in df.columns else 0,
+                        "total_clicks": df.get("Клики", pd.Series()).sum() if "Клики" in df.columns else 0,
+                        "total_cost": df.get("Расход до НДС", pd.Series()).sum() if "Расход до НДС" in df.columns else 0,
+                        "avg_ctr": df.get("CTR", pd.Series()).mean() if "CTR" in df.columns else 0,
+                        "avg_cpc": df.get("CPC", pd.Series()).mean() if "CPC" in df.columns else 0
+                    }
+                
+                # Улучшаем отчет с помощью OpenAI
+                enhanced_report = self.enhance_report_with_openai(report, question, data_summary)
+                if enhanced_report != report:
+                    report = enhanced_report
+                    print("✅ Отчет улучшен с помощью OpenAI GPT")
+            except Exception as e:
+                print(f"Ошибка при обращении к OpenAI: {e}")
+        
+        # Если OpenAI недоступен, используем локальную RAG систему
+        elif should_use_enhancement and self.rag_system is not None:
             try:
                 # Улучшаем отчет с помощью RAG системы
                 enhanced_report = self.rag_system.enhance_report(report, question)
                 if enhanced_report != report:
                     report = enhanced_report
+                    print("✅ Отчет улучшен с помощью локальной RAG системы")
             except Exception as e:
                 # Если RAG система недоступна, используем базовый отчет
+                print(f"Ошибка RAG системы: {e}")
                 pass
         
         # Сохраняем в историю
@@ -1690,6 +1742,167 @@ class MarketingAnalyticsAgent:
             """
         
         return sql
+
+    def enhance_report_with_openai(self, report: str, question: str, data_summary: Dict = None) -> str:
+        """
+        Улучшает отчет с помощью OpenAI GPT
+        """
+        if not self.openai_available:
+            return report
+        
+        try:
+            # Формируем промпт для GPT
+            system_prompt = """Ты опытный аналитик маркетинга. Твоя задача - улучшить отчет по рекламным кампаниям, добавив профессиональные инсайты и рекомендации.
+
+Ты должен:
+1. Проанализировать данные и найти ключевые инсайты
+2. Дать конкретные рекомендации по оптимизации
+3. Объяснить метрики простым языком
+4. Предложить следующие шаги для улучшения кампаний
+
+Используй профессиональную терминологию маркетинга, но объясняй простым языком."""
+
+            # Добавляем контекст данных если есть
+            data_context = ""
+            if data_summary:
+                data_context = f"\n\nКонтекст данных:\n"
+                for key, value in data_summary.items():
+                    if isinstance(value, (int, float)) and value > 0:
+                        data_context += f"- {key}: {value}\n"
+
+            user_prompt = f"""Вопрос пользователя: {question}
+
+Текущий отчет:
+{report}
+
+{data_context}
+
+Пожалуйста, улучши этот отчет, добавив:
+1. Ключевые инсайты из данных
+2. Конкретные рекомендации по оптимизации
+3. Объяснение важных метрик
+4. Следующие шаги для улучшения
+
+Сохрани структуру отчета, но сделай его более информативным и полезным."""
+
+            # Отправляем запрос к GPT
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                max_tokens=1000,
+                temperature=0.7
+            )
+            
+            enhanced_report = response.choices[0].message.content
+            return enhanced_report
+            
+        except Exception as e:
+            print(f"Ошибка при обращении к OpenAI: {e}")
+            return report
+
+    def generate_insights_with_openai(self, data: pd.DataFrame, question: str) -> List[str]:
+        """
+        Генерирует инсайты с помощью OpenAI GPT
+        """
+        if not self.openai_available or data.empty:
+            return []
+        
+        try:
+            # Подготавливаем данные для анализа
+            data_summary = {
+                "total_rows": len(data),
+                "columns": list(data.columns)
+            }
+            
+            # Добавляем числовые метрики
+            numeric_columns = data.select_dtypes(include=[np.number]).columns
+            for col in numeric_columns:
+                if col in data.columns:
+                    data_summary[f"avg_{col}"] = data[col].mean()
+                    data_summary[f"max_{col}"] = data[col].max()
+            
+            system_prompt = """Ты опытный аналитик маркетинга. Проанализируй данные и сгенерируй 3-5 ключевых инсайтов.
+
+Инсайты должны быть:
+1. Конкретными и основанными на данных
+2. Практически применимыми
+3. Направленными на улучшение эффективности
+4. Понятными для маркетологов
+
+Формат: каждый инсайт с новой строки, начинается с "•" """
+
+            user_prompt = f"""Вопрос: {question}
+
+Данные для анализа:
+{data_summary}
+
+Сгенерируй 3-5 ключевых инсайтов на основе этих данных."""
+
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                max_tokens=500,
+                temperature=0.7
+            )
+            
+            insights_text = response.choices[0].message.content
+            # Разбиваем на отдельные инсайты
+            insights = [insight.strip() for insight in insights_text.split('\n') if insight.strip().startswith('•')]
+            return insights
+            
+        except Exception as e:
+            print(f"Ошибка при генерации инсайтов с OpenAI: {e}")
+            return []
+
+    def generate_recommendations_with_openai(self, data: pd.DataFrame, question: str) -> List[str]:
+        """
+        Генерирует рекомендации с помощью OpenAI GPT
+        """
+        if not self.openai_available or data.empty:
+            return []
+        
+        try:
+            system_prompt = """Ты опытный маркетолог-аналитик. На основе данных сгенерируй 3-5 конкретных рекомендаций по оптимизации рекламных кампаний.
+
+Рекомендации должны быть:
+1. Конкретными и выполнимыми
+2. Основанными на анализе данных
+3. Направленными на улучшение ROI
+4. Практически применимыми
+
+Формат: каждая рекомендация с новой строки, начинается с "•" """
+
+            user_prompt = f"""Вопрос: {question}
+
+Данные кампаний:
+{data.head().to_string()}
+
+Сгенерируй 3-5 конкретных рекомендаций по оптимизации."""
+
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                max_tokens=500,
+                temperature=0.7
+            )
+            
+            recommendations_text = response.choices[0].message.content
+            # Разбиваем на отдельные рекомендации
+            recommendations = [rec.strip() for rec in recommendations_text.split('\n') if rec.strip().startswith('•')]
+            return recommendations
+            
+        except Exception as e:
+            print(f"Ошибка при генерации рекомендаций с OpenAI: {e}")
+            return []
 
 # Пример использования
 if __name__ == "__main__":
