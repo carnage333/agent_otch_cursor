@@ -286,21 +286,21 @@ if st.session_state.pending_campaign_select:
         if st.button("📊 Показать отчет", key=f"show_report_{st.session_state.pending_user_question}"):
             if selected_campaign == "Все кампании":
                 # Для "Все кампаний" формируем SQL запрос для всех найденных кампаний
-                campaign_conditions = " OR ".join([f"campaign_name = '{campaign}'" for campaign in st.session_state.pending_campaign_select])
+                campaign_conditions = " OR ".join([f"\"Название кампании\" = '{campaign}'" for campaign in st.session_state.pending_campaign_select])
                 sql_query = f"""
                 SELECT 
-                    campaign_name,
-                    platform,
-                    SUM(impressions) as impressions,
-                    SUM(clicks) as clicks,
-                    SUM(cost_before_vat) as cost,
-                    SUM(visits) as visits,
-                    ROUND(SUM(clicks) * 100.0 / SUM(impressions), 2) as ctr,
-                    ROUND(SUM(cost_before_vat) / SUM(clicks), 2) as cpc
+                    "Название кампании" as campaign_name,
+                    "Площадка" as platform,
+                    SUM("Показы") as impressions,
+                    SUM("Клики") as clicks,
+                    SUM("Расход до НДС") as cost,
+                    SUM("Визиты") as visits,
+                    ROUND(SUM("Клики") * 100.0 / SUM("Показы"), 2) as ctr,
+                    ROUND(SUM("Расход до НДС") / SUM("Клики"), 2) as cpc
                 FROM campaign_metrics 
                 WHERE {campaign_conditions}
-                GROUP BY campaign_name, platform
-                ORDER BY campaign_name ASC
+                GROUP BY "Название кампании", "Площадка"
+                ORDER BY "Название кампании" ASC
                 """
                 if agent:
                     df = agent.execute_query(sql_query)
@@ -312,7 +312,7 @@ if st.session_state.pending_campaign_select:
                     response = "❌ Ошибка: агент недоступен"
             else:
                 # Формируем SQL запрос только для выбранной кампании
-                sql_query = f"SELECT campaign_name, platform, SUM(impressions) as impressions, SUM(clicks) as clicks, SUM(cost_before_vat) as cost, SUM(visits) as visits, ROUND(SUM(clicks) * 100.0 / SUM(impressions), 2) as ctr, ROUND(SUM(cost_before_vat) / SUM(clicks), 2) as cpc FROM campaign_metrics WHERE campaign_name = '{selected_campaign}' GROUP BY campaign_name, platform ORDER BY campaign_name ASC"
+                sql_query = f"SELECT \"Название кампании\" as campaign_name, \"Площадка\" as platform, SUM(\"Показы\") as impressions, SUM(\"Клики\") as clicks, SUM(\"Расход до НДС\") as cost, SUM(\"Визиты\") as visits, ROUND(SUM(\"Клики\") * 100.0 / SUM(\"Показы\"), 2) as ctr, ROUND(SUM(\"Расход до НДС\") / SUM(\"Клики\"), 2) as cpc FROM campaign_metrics WHERE \"Название кампании\" = '{selected_campaign}' GROUP BY \"Название кампании\", \"Площадка\" ORDER BY \"Название кампании\" ASC"
                 if agent:
                     df = agent.execute_query(sql_query)
                     analysis = agent.analyze_data(df, f"Сделай отчет по кампании {selected_campaign}")
