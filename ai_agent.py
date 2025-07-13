@@ -1131,14 +1131,6 @@ class MarketingAnalyticsAgent:
                 report += f"• {rec}\n\n"
             report += "\n"
         
-        # Добавляем SQL запрос внизу отчёта
-        if sql_query:
-            report += "\n<details>\n<summary>🔍 SQL запрос</summary>\n\n"
-            report += "```sql\n"
-            report += sql_query.strip()
-            report += "\n```\n\n"
-            report += "</details>\n"
-        
         return report
     
     def _generate_funnel_report(self, analysis: Dict, question: str, sql_query: str = "") -> str:
@@ -1209,14 +1201,6 @@ class MarketingAnalyticsAgent:
             for rec in analysis["recommendations"]:
                 report += f"- {rec}\n"
             report += "\n"
-        
-        # Добавляем SQL запрос внизу отчёта
-        if sql_query:
-            report += "\n<details>\n<summary>🔍 SQL запрос</summary>\n\n"
-            report += "```sql\n"
-            report += sql_query.strip()
-            report += "\n```\n\n"
-            report += "</details>\n"
         
         return report
     
