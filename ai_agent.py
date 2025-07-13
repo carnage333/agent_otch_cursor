@@ -163,18 +163,6 @@ class MarketingAnalyticsAgent:
         # Если нашли основные ключевые слова, используем их как основу
         if found_main_keywords:
             search_terms = found_main_keywords.copy()
-            
-            # Добавляем дополнительные слова, если они есть
-            for kw in ["ПО КАМПАНИИ", "КАМПАНИЯ", "ОТЧЕТ ПО", "ОТЧЁТ ПО", "СДЕЛАЙ ОТЧЕТ ПО", "ПОКАЖИ ОТЧЕТ ПО", "АНАЛИЗ КАМПАНИИ"]:
-                if kw in question_upper:
-                    part = question_upper.split(kw, 1)[-1].strip()
-                    # Убираем лишние слова
-                    for w in ["ПОКАЖИ", "ОТЧЕТ", "ОТЧЁТ", "АНАЛИЗ", "СТАТИСТИКА", "ДАННЫЕ", "ПО"]:
-                        part = part.replace(w, "").strip()
-                    additional_keywords = [w for w in re.split(r"[\s,()]+", part) if w and len(w) > 1 and w not in found_main_keywords]
-                    search_terms.extend(additional_keywords)
-                    break
-            
             return list(set(search_terms))  # Убираем дубликаты
         
         # Если нет основных ключевых слов, используем стандартную логику
@@ -500,36 +488,24 @@ class MarketingAnalyticsAgent:
         # Строим условия поиска
         where_conditions = []
         if search_terms and not is_general_stats:
-            # Проверяем, есть ли основные ключевые слова (ФРК4, ФРК1 и т.д.)
+            # Упрощенная логика поиска - ищем по основным ключевым словам
             main_keywords = ["фрк4", "фрк1", "фрк2", "фрк3"]
             found_main_keyword = None
+            
+            # Проверяем, есть ли основные ключевые слова
             for keyword in main_keywords:
                 if keyword in [term.lower() for term in search_terms]:
                     found_main_keyword = keyword
                     break
             
             if found_main_keyword:
-                # Если есть основной ключевой термин, используем его как основу
-                where_conditions.append(f"UPPER(\"Название кампании\") LIKE '%{found_main_keyword.upper()}%'")
-                
-                # Добавляем дополнительные условия только если они есть в названии
-                additional_terms = [term for term in search_terms if term.lower() not in main_keywords]
-                if additional_terms:
-                    # Используем более мягкую логику - ИЛИ вместо И
-                    additional_conditions = []
-                    for term in additional_terms:
-                        additional_conditions.append(f"UPPER(\"Название кампании\") LIKE '%{term.upper()}%'")
-                    if additional_conditions:
-                        where_conditions.append(f"({' OR '.join(additional_conditions)})")
+                # Для основных ключевых слов используем простой поиск
+                where_conditions.append(f"\"Название кампании\" LIKE '%{found_main_keyword.upper()}%'")
             else:
-                # Если нет основного ключевого слова, используем стандартную логику
-                conditions = self._build_flexible_sql_conditions(search_terms)
-                if conditions:
-                    where_conditions.extend(conditions)
-                else:
-                    # Если не удалось построить сложные условия, используем простой LIKE
-                    for term in search_terms:
-                        where_conditions.append(f"UPPER(\"Название кампании\") LIKE '%{term.upper()}%'")
+                # Для остальных терминов используем простой LIKE
+                for term in search_terms:
+                    if len(term) > 2:  # Игнорируем слишком короткие термины
+                        where_conditions.append(f"\"Название кампании\" LIKE '%{term.upper()}%'")
         
         # Определяем ORDER BY
         order_by = []
@@ -1403,13 +1379,13 @@ class MarketingAnalyticsAgent:
             except Exception as e:
                 print(f"Ошибка при обращении к Hugging Face: {e}")
         
-        # 3. Пробуем локальную RAG систему
-        if should_use_enhancement and self.rag_system is not None and not enhanced:
+        # 3. Пробуем локальную RAG систему (отключаем для отчетов с данными)
+        if should_use_enhancement and self.rag_system is not None and not enhanced and not has_data:
             try:
                 enhanced_report = self.rag_system.enhance_report(report, question)
                 if enhanced_report != report:
                     report = enhanced_report
-                    print("✅ Отчет улучшен с помощью локальной RAG системы")
+                    print("✅ Отчет дополнен контекстной информацией")
                     enhanced = True
             except Exception as e:
                 print(f"Ошибка RAG системы: {e}")
