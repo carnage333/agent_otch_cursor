@@ -1297,8 +1297,11 @@ class MarketingAnalyticsAgent:
         # Генерируем Excel отчет
         excel_data = self.generate_excel_report(analysis, question)
         
-        # Возвращаем отчет, SQL запрос и Excel данные
-        return report, sql_query, excel_data
+        # Генерируем данные для дашборда
+        dashboard_data = self.generate_dashboard_data(analysis)
+        
+        # Возвращаем отчет, SQL запрос, Excel данные и данные дашборда
+        return report, sql_query, excel_data, dashboard_data
     
     def generate_excel_report(self, analysis: Dict, question: str) -> bytes:
         """
@@ -1460,6 +1463,85 @@ class MarketingAnalyticsAgent:
         excel_buffer.seek(0)
         
         return excel_buffer.getvalue()
+    
+    def generate_dashboard_data(self, analysis: Dict) -> Dict:
+        """
+        Генерация данных для дашборда с графиками
+        """
+        dashboard_data = {
+            "charts": [],
+            "metrics": {},
+            "summary": {}
+        }
+        
+        summary = analysis.get("summary", {})
+        
+        # Основные метрики
+        dashboard_data["metrics"] = {
+            "total_impressions": summary.get('total_impressions', 0),
+            "total_clicks": summary.get('total_clicks', 0),
+            "total_cost": summary.get('total_cost', 0),
+            "total_visits": summary.get('total_visits', 0),
+            "avg_ctr": summary.get('avg_ctr', 0),
+            "avg_cpc": summary.get('avg_cpc', 0)
+        }
+        
+        # График по площадкам
+        if "platforms" in summary and summary["platforms"]:
+            platforms_data = []
+            for platform in summary["platforms"]:
+                platforms_data.append({
+                    "platform": platform.get('platform', '—'),
+                    "impressions": platform.get('impressions', 0),
+                    "clicks": platform.get('clicks', 0),
+                    "cost": platform.get('cost', 0),
+                    "ctr": platform.get('ctr', 0),
+                    "cpc": platform.get('cpc', 0)
+                })
+            
+            dashboard_data["charts"].append({
+                "type": "platforms_comparison",
+                "title": "Сравнение по площадкам",
+                "data": platforms_data
+            })
+        
+        # График кампаний
+        if "campaigns" in summary and summary["campaigns"]:
+            campaigns_data = []
+            for campaign in summary["campaigns"]:
+                campaigns_data.append({
+                    "campaign": campaign.get('campaign_name', '—'),
+                    "platform": campaign.get('platform', '—'),
+                    "impressions": campaign.get('impressions', 0),
+                    "clicks": campaign.get('clicks', 0),
+                    "cost": campaign.get('cost', 0),
+                    "ctr": campaign.get('ctr', 0),
+                    "cpc": campaign.get('cpc', 0)
+                })
+            
+            dashboard_data["charts"].append({
+                "type": "campaigns_performance",
+                "title": "Эффективность кампаний",
+                "data": campaigns_data
+            })
+        
+        # Круговые диаграммы для распределения
+        if summary.get('total_cost', 0) > 0:
+            cost_distribution = []
+            for platform in summary.get("platforms", []):
+                cost_distribution.append({
+                    "platform": platform.get('platform', '—'),
+                    "cost": platform.get('cost', 0),
+                    "percentage": (platform.get('cost', 0) / summary.get('total_cost', 1)) * 100
+                })
+            
+            dashboard_data["charts"].append({
+                "type": "cost_distribution",
+                "title": "Распределение расходов по площадкам",
+                "data": cost_distribution
+            })
+        
+        return dashboard_data
     
     def _generate_csv_report(self, analysis: Dict, question: str) -> bytes:
         """

@@ -265,6 +265,77 @@ with chat_container:
                 elif "excel_data" in message and (not message["excel_data"] or len(message["excel_data"]) == 0):
                     st.info("📊 Отчет недоступен")
                 
+                # Отображение дашборда
+                if "dashboard_data" in message and message["dashboard_data"]:
+                    st.markdown("---")
+                    st.markdown("### 📊 Интерактивный дашборд")
+                    
+                    dashboard_data = message["dashboard_data"]
+                    
+                    # Основные метрики
+                    if dashboard_data.get("metrics"):
+                        metrics = dashboard_data["metrics"]
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.metric("Показы", f"{metrics.get('total_impressions', 0):,}")
+                            st.metric("Клики", f"{metrics.get('total_clicks', 0):,}")
+                        
+                        with col2:
+                            st.metric("Расход", f"{metrics.get('total_cost', 0):,.0f} ₽")
+                            st.metric("Визиты", f"{metrics.get('total_visits', 0):,}")
+                        
+                        with col3:
+                            st.metric("CTR", f"{metrics.get('avg_ctr', 0):.2f}%")
+                            st.metric("CPC", f"{metrics.get('avg_cpc', 0):.2f} ₽")
+                    
+                    # Графики
+                    if dashboard_data.get("charts"):
+                        for chart in dashboard_data["charts"]:
+                            if chart["type"] == "platforms_comparison":
+                                st.subheader("📱 Сравнение по площадкам")
+                                
+                                # Создаем DataFrame для графика
+                                df = pd.DataFrame(chart["data"])
+                                
+                                # График CTR по площадкам
+                                fig_ctr = px.bar(df, x='platform', y='ctr', 
+                                                title='CTR по площадкам',
+                                                color='platform')
+                                fig_ctr.update_layout(height=400)
+                                st.plotly_chart(fig_ctr, use_container_width=True)
+                                
+                                # График CPC по площадкам
+                                fig_cpc = px.bar(df, x='platform', y='cpc',
+                                                title='CPC по площадкам',
+                                                color='platform')
+                                fig_cpc.update_layout(height=400)
+                                st.plotly_chart(fig_cpc, use_container_width=True)
+                            
+                            elif chart["type"] == "cost_distribution":
+                                st.subheader("💰 Распределение расходов")
+                                
+                                df = pd.DataFrame(chart["data"])
+                                
+                                # Круговая диаграмма
+                                fig_pie = px.pie(df, values='cost', names='platform',
+                                                title='Распределение расходов по площадкам')
+                                fig_pie.update_layout(height=400)
+                                st.plotly_chart(fig_pie, use_container_width=True)
+                            
+                            elif chart["type"] == "campaigns_performance":
+                                st.subheader("📈 Эффективность кампаний")
+                                
+                                df = pd.DataFrame(chart["data"])
+                                
+                                # График показов и кликов
+                                fig_performance = px.scatter(df, x='impressions', y='clicks',
+                                                           size='cost', color='platform',
+                                                           hover_data=['campaign', 'ctr', 'cpc'],
+                                                           title='Эффективность кампаний')
+                                fig_performance.update_layout(height=400)
+                                st.plotly_chart(fig_performance, use_container_width=True)
+                
                 if "sql_query" in message and message["sql_query"]:
                     with st.expander("🔍 Показать SQL запрос", expanded=False):
                         # Форматируем SQL запрос для лучшей читаемости
@@ -318,6 +389,7 @@ if st.session_state.pending_campaign_select:
                     df = agent.execute_query(sql_query)
                     analysis = agent.analyze_data(df, str(st.session_state.pending_user_question))
                     response = agent.generate_report(analysis, str(st.session_state.pending_user_question), sql_query)
+                    dashboard_data = agent.generate_dashboard_data(analysis)
                     try:
                         excel_data = agent.generate_excel_report(analysis, str(st.session_state.pending_user_question))
                         if not excel_data or len(excel_data) == 0:
@@ -335,6 +407,7 @@ if st.session_state.pending_campaign_select:
                     response = "❌ Ошибка: агент недоступен"
                     sql_query = ""
                     excel_data = None
+                    dashboard_data = None
             else:
                 # Формируем SQL запрос только для выбранной кампании
                 # Используем LIKE для более гибкого поиска
@@ -343,6 +416,7 @@ if st.session_state.pending_campaign_select:
                     df = agent.execute_query(sql_query)
                     analysis = agent.analyze_data(df, f"Сделай отчет по кампании {selected_campaign}")
                     response = agent.generate_report(analysis, f"Сделай отчет по кампании {selected_campaign}", sql_query)
+                    dashboard_data = agent.generate_dashboard_data(analysis)
                     try:
                         excel_data = agent.generate_excel_report(analysis, f"Сделай отчет по кампании {selected_campaign}")
                         if not excel_data or len(excel_data) == 0:
@@ -360,11 +434,13 @@ if st.session_state.pending_campaign_select:
                     response = "❌ Ошибка: агент недоступен"
                     sql_query = ""
                     excel_data = None
+                    dashboard_data = None
             st.session_state.chat_history.append({
                 "role": "assistant",
                 "content": response,
                 "sql_query": sql_query,
-                "excel_data": excel_data
+                "excel_data": excel_data,
+                "dashboard_data": dashboard_data
             })
             st.session_state.pending_campaign_select = None
             st.session_state.pending_user_question = None
@@ -409,12 +485,13 @@ if user_question and not st.session_state.pending_campaign_select:
             # Если найдена только одна кампания, сразу показываем отчет
             st.session_state.chat_history.append({"role": "user", "content": user_question})
             with st.spinner("🤖 Агент анализирует данные..."):
-                response, sql_query, excel_data = agent.process_question(user_question)
+                response, sql_query, excel_data, dashboard_data = agent.process_question(user_question)
             st.session_state.chat_history.append({
                 "role": "assistant",
                 "content": response,
                 "sql_query": sql_query,
-                "excel_data": excel_data
+                "excel_data": excel_data,
+                "dashboard_data": dashboard_data
             })
             st.rerun()
         else:
