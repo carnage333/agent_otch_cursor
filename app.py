@@ -444,4 +444,44 @@ if st.session_state.chat_history:
             st.success("✅ История диалога очищена!")
             st.rerun()
 
- 
+# Основной интерфейс чата
+st.markdown("</div>", unsafe_allow_html=True)  # Закрываем main-content
+
+# Поле ввода для пользователя
+if prompt := st.chat_input("Задайте вопрос о рекламных кампаниях..."):
+    # Добавляем сообщение пользователя в историю
+    st.session_state.chat_history.append({"role": "user", "content": prompt})
+    
+    # Обрабатываем вопрос через агент
+    if agent:
+        try:
+            response, sql_query, excel_data, dashboard_data = agent.process_question(prompt)
+            
+            # Добавляем ответ агента в историю
+            st.session_state.chat_history.append({
+                "role": "assistant",
+                "content": response,
+                "sql_query": sql_query,
+                "excel_data": excel_data,
+                "dashboard_data": dashboard_data
+            })
+        except Exception as e:
+            error_message = f"❌ Ошибка при обработке вопроса: {str(e)}"
+            st.session_state.chat_history.append({
+                "role": "assistant",
+                "content": error_message,
+                "sql_query": "",
+                "excel_data": None,
+                "dashboard_data": None
+            })
+    else:
+        error_message = "❌ Ошибка: агент недоступен"
+        st.session_state.chat_history.append({
+            "role": "assistant",
+            "content": error_message,
+            "sql_query": "",
+            "excel_data": None,
+            "dashboard_data": None
+        })
+    
+    st.rerun()
