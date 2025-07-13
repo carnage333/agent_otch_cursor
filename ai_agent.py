@@ -907,13 +907,15 @@ class MarketingAnalyticsAgent:
             if len(summary["campaigns"]) == 1:
                 # Одна кампания - показываем детальную статистику
                 campaign = summary["campaigns"][0]
-                report += "## 📊 Статистика кампании\n\n"
-                report += f"**Название:** {campaign.get('campaign_name', '—')}\n\n"
-                report += f"**Показы:** {campaign.get('impressions', 0):,.0f}\n\n"
-                report += f"**Клики:** {campaign.get('clicks', 0):,.0f}\n\n"
-                report += f"**Расход:** {campaign.get('cost', 0):,.0f} ₽\n\n"
-                report += f"**Посещения:** {campaign.get('visits', 0):,.0f}\n\n"
-                report += f"**CTR:** {campaign.get('ctr', 0):.2f}%\n\n"
+                report += f"## 📊 Отчет по кампании: {campaign.get('campaign_name', '—')}\n\n"
+                
+                # Основные метрики
+                report += "### 📈 Основные показатели\n\n"
+                report += f"**Показы:** {campaign.get('impressions', 0):,.0f}\n"
+                report += f"**Клики:** {campaign.get('clicks', 0):,.0f}\n"
+                report += f"**Расход:** {campaign.get('cost', 0):,.0f} ₽\n"
+                report += f"**Посещения:** {campaign.get('visits', 0):,.0f}\n"
+                report += f"**CTR:** {campaign.get('ctr', 0):.2f}%\n"
                 report += f"**CPC:** {campaign.get('cpc', 0):.2f} ₽\n\n"
                 
                 # Рассчитываем дополнительные метрики
@@ -961,10 +963,6 @@ class MarketingAnalyticsAgent:
                 report += f"**Средний CPC:** {summary.get('avg_cpc', 0):.2f} ₽\n\n"
                 
                 # Детальная таблица по кампаниям
-                report += "## 📋 Детальная статистика по кампаниям\n\n"
-                report += "| Кампания | Площадка | Показы | Клики | Расход | Визиты | CTR | CPC |\n"
-                report += "|----------|----------|--------|-------|--------|--------|-----|-----|\n"
-                
                 # Фильтруем только кампании с данными
                 campaigns_with_data = []
                 for campaign in summary["campaigns"]:
@@ -1061,7 +1059,6 @@ class MarketingAnalyticsAgent:
                         platforms_with_data.append((platform_name, platform_data))
                 
                 if platforms_with_data:
-                    report += "## 📱 Эффективность по площадкам\n\n"
                     for platform_name, platform_data in platforms_with_data:
                         report += f"### {platform_name}\n\n"
                         
