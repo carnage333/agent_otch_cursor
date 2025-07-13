@@ -255,11 +255,15 @@ with chat_container:
                     mime_type = "text/csv"
                     button_label = "📊 Скачать CSV отчет"
                     
+                    # Создаем уникальный ключ для каждой кнопки
+                    button_key = f"download_{len(st.session_state.chat_history)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    
                     st.download_button(
                         label=button_label,
                         data=message["excel_data"],
                         file_name=file_name,
-                        mime=mime_type
+                        mime=mime_type,
+                        key=button_key
                     )
 
                 # Убираем сообщение "Отчет недоступен" так как отчет уже сгенерирован в тексте выше

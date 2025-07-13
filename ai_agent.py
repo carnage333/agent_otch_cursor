@@ -1354,19 +1354,9 @@ class MarketingAnalyticsAgent:
             analysis = self.analyze_data(df, question)
             report = self.generate_report(analysis, question, sql_query)
         else:
-            # Если данных нет, создаем базовый отчет с контекстной информацией
+            # Если данных нет, создаем базовый отчет
             report = f"# 📋 Отчет по запросу: {question}\n\n"
             report += "Нет данных для анализа по вашему запросу.\n\n"
-            
-            # Добавляем контекстную информацию из RAG системы
-            if self.rag_system is not None:
-                try:
-                    rag_enhanced = self.rag_system.enhance_report(report, question)
-                    if rag_enhanced != report:
-                        report = rag_enhanced
-                        print("✅ Отчет дополнен контекстной информацией")
-                except Exception as e:
-                    print(f"Ошибка RAG системы: {e}")
         
         # Используем различные LLM для улучшения отчетов
         should_use_enhancement = not has_data or is_asking_about_terms or has_data
