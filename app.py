@@ -306,8 +306,7 @@ if st.session_state.pending_campaign_select:
                     df = agent.execute_query(sql_query)
                     analysis = agent.analyze_data(df, str(st.session_state.pending_user_question))
                     response = agent.generate_report(analysis, str(st.session_state.pending_user_question))
-                    # Добавляем SQL запрос в отчет
-                    response = f"\n## 🔍 SQL запрос\n```sql\n{sql_query}\n```\n" + response
+                    # SQL запрос уже добавляется в generate_report
                 else:
                     response = "❌ Ошибка: агент недоступен"
             else:
@@ -317,8 +316,7 @@ if st.session_state.pending_campaign_select:
                     df = agent.execute_query(sql_query)
                     analysis = agent.analyze_data(df, f"Сделай отчет по кампании {selected_campaign}")
                     response = agent.generate_report(analysis, f"Сделай отчет по кампании {selected_campaign}")
-                    # Добавляем SQL запрос в отчет
-                    response = f"\n## 🔍 SQL запрос\n```sql\n{sql_query}\n```\n" + response
+                    # SQL запрос уже добавляется в generate_report
                 else:
                     response = "❌ Ошибка: агент недоступен"
             processed_response, sql_query = process_sql_display(response)
