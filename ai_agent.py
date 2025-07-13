@@ -1301,6 +1301,7 @@ class MarketingAnalyticsAgent:
         ])
         
         # Анализируем данные только если они есть
+        analysis = None
         if has_data:
             analysis = self.analyze_data(df, question)
             report = self.generate_report(analysis, question, sql_query)
