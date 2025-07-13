@@ -946,7 +946,7 @@ class MarketingAnalyticsAgent:
             else:
                 # Несколько кампаний - показываем общую статистику
                 report += "## 📊 Общая статистика по кампаниям\n\n"
-                report += f"**Всего кампаний:** {len(summary['campaigns'])}\n"
+                report += f"**Всего кампаний:** {summary.get('campaigns_count', 0)}\n"
                 report += f"**Общие показы:** {summary.get('total_impressions', 0):,.0f}\n"
                 report += f"**Общие клики:** {summary.get('total_clicks', 0):,.0f}\n"
                 report += f"**Общий расход:** {summary.get('total_cost', 0):,.0f} ₽\n"
