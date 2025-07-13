@@ -1317,6 +1317,14 @@ class MarketingAnalyticsAgent:
             print(f"🔍 DEBUG: Возвращаем простой CSV, длина: {len(result)}")
             return result
         
+        # Проверяем, что analysis не пустой
+        if not analysis:
+            print(f"🔍 DEBUG: analysis пустой")
+            csv_content = f"Отчет по запросу: {question}\n\nОшибка: нет данных для анализа."
+            result = csv_content.encode('utf-8')
+            print(f"🔍 DEBUG: Возвращаем ошибку CSV, длина: {len(result)}")
+            return result
+        
         # Создаем CSV отчет
         csv_parts = []
         
@@ -1392,9 +1400,17 @@ class MarketingAnalyticsAgent:
             for rec in analysis["recommendations"]:
                 csv_parts.append(f"• {rec}")
         
-        result = "\n".join(csv_parts).encode('utf-8')
+        # Принудительно добавляем хотя бы одну строку, если csv_parts пустой
+        if not csv_parts:
+            csv_parts.append(f"Отчет по запросу: {question}")
+            csv_parts.append("Нет данных для отображения в CSV")
+        
+        csv_content = "\n".join(csv_parts)
+        result = csv_content.encode('utf-8')
         print(f"🔍 DEBUG: CSV сгенерирован, длина: {len(result)}")
         print(f"🔍 DEBUG: Первые 200 символов: {result[:200]}")
+        print(f"🔍 DEBUG: csv_parts количество: {len(csv_parts)}")
+        print(f"🔍 DEBUG: csv_content длина: {len(csv_content)}")
         return result
     
     def generate_dashboard_data(self, analysis: Dict) -> Dict:
