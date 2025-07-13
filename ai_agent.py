@@ -352,10 +352,34 @@ class MarketingAnalyticsAgent:
     def get_matching_campaigns(self, user_question: str) -> list:
         """
         Возвращает список найденных кампаний по пользовательскому вопросу (fuzzy-поиск).
+        Группирует кампании по названию, исключая разные площадки.
         """
         search_terms = self._extract_search_terms(user_question)
         fuzzy_names = self._fuzzy_search_campaigns(search_terms)
-        return fuzzy_names
+        
+        # Группируем кампании по названию (без площадки)
+        unique_campaigns = set()
+        for campaign_name in fuzzy_names:
+            # Убираем информацию о площадке из названия кампании
+            # Ищем паттерны типа "Кампания - Площадка" или "Кампания (Площадка)"
+            clean_name = campaign_name
+            
+            # Убираем площадки в скобках
+            import re
+            clean_name = re.sub(r'\s*\([^)]+\)\s*$', '', clean_name)
+            
+            # Убираем площадки после дефиса
+            clean_name = re.sub(r'\s*-\s*[^-]+$', '', clean_name)
+            
+            # Убираем площадки после двоеточия
+            clean_name = re.sub(r'\s*:\s*[^:]+$', '', clean_name)
+            
+            # Убираем площадки после пробела (если это не часть названия кампании)
+            # Это более сложная логика, поэтому оставляем как есть для основных случаев
+            
+            unique_campaigns.add(clean_name.strip())
+        
+        return list(unique_campaigns)
 
     def generate_sql_query(self, user_question: str) -> str:
         """

@@ -348,7 +348,8 @@ if user_question and not st.session_state.pending_campaign_select:
             st.session_state.pending_user_question = user_question
             st.session_state.chat_history.append({"role": "user", "content": user_question})
             st.rerun()
-        else:
+        elif len(matching_campaigns) == 1:
+            # Если найдена только одна кампания, сразу показываем отчет
             st.session_state.chat_history.append({"role": "user", "content": user_question})
             with st.spinner("🤖 Агент анализирует данные..."):
                 response, sql_query = agent.process_question(user_question)
@@ -356,6 +357,15 @@ if user_question and not st.session_state.pending_campaign_select:
                 "role": "assistant",
                 "content": response,
                 "sql_query": sql_query
+            })
+            st.rerun()
+        else:
+            # Если кампании не найдены, показываем сообщение об ошибке
+            st.session_state.chat_history.append({"role": "user", "content": user_question})
+            st.session_state.chat_history.append({
+                "role": "assistant",
+                "content": "❌ Не найдено кампаний по вашему запросу. Попробуйте изменить формулировку вопроса.",
+                "sql_query": ""
             })
             st.rerun()
     else:
