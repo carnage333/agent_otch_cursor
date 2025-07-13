@@ -39,8 +39,19 @@ Thumbs.db
 # Streamlit
 .streamlit/
 
-# Database (если не хотите включать в репозиторий)
-# marketing_analytics.db
+# Database (исключаем большие файлы)
+marketing_analytics.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Large CSV files
+rko_funnel_sample-1750856109631.csv
+rko_econometric_sample.csv
+
+# Vector index files
+*.faiss
+simple_rag_index.faiss
 
 # Logs
 *.log

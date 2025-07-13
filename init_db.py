@@ -29,8 +29,10 @@ def init_database():
             'rko_funnel_sample-1750856109631.csv'
         ]
         
+        csv_found = False
         for csv_file in csv_files:
             if os.path.exists(csv_file):
+                csv_found = True
                 print(f"Загрузка данных из {csv_file}...")
                 
                 # Читаем CSV файл
@@ -47,6 +49,57 @@ def init_database():
                 # Сохраняем в базу данных
                 df.to_sql(table_name, conn, if_exists='replace', index=False)
                 print(f"Таблица {table_name} создана с {len(df)} записями")
+        
+        # Если CSV файлы не найдены, создаем демо-данные
+        if not csv_found:
+            print("CSV файлы не найдены. Создание демо-данных...")
+            try:
+                from create_demo_data import create_demo_data
+                create_demo_data()
+                
+                # Теперь загружаем созданные демо-данные
+                for csv_file in csv_files:
+                    if os.path.exists(csv_file):
+                        print(f"Загрузка демо-данных из {csv_file}...")
+                        df = pd.read_csv(csv_file)
+                        
+                        if 'econometric' in csv_file:
+                            table_name = 'campaign_metrics'
+                        elif 'funnel' in csv_file:
+                            table_name = 'funnel_data'
+                        else:
+                            table_name = csv_file.replace('.csv', '').replace('-', '_')
+                        
+                        df.to_sql(table_name, conn, if_exists='replace', index=False)
+                        print(f"Таблица {table_name} создана с {len(df)} записями")
+            except Exception as e:
+                print(f"Ошибка при создании демо-данных: {e}")
+                print("Создание пустых таблиц...")
+                
+                # Создаем пустые таблицы с правильной структурой
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS campaign_metrics (
+                        campaign_name TEXT,
+                        platform TEXT,
+                        impressions INTEGER,
+                        clicks INTEGER,
+                        cost_before_vat REAL,
+                        visits INTEGER,
+                        date TEXT
+                    )
+                """)
+                
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS funnel_data (
+                        utm_source TEXT,
+                        visits INTEGER,
+                        submits INTEGER,
+                        accounts_opened INTEGER,
+                        created INTEGER,
+                        calls_answered INTEGER,
+                        quality_leads INTEGER
+                    )
+                """)
         
         # Создаем индексы для оптимизации
         print("Создание индексов...")
