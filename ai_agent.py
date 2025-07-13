@@ -165,6 +165,19 @@ class MarketingAnalyticsAgent:
             search_terms = found_main_keywords.copy()
             return list(set(search_terms))  # Убираем дубликаты
         
+        # Проверяем ключевые слова продуктов
+        product_keywords = ["РКО", "РБИДОС", "БИЗНЕС-КАРТЫ", "БИЗНЕС-КРЕДИТЫ", "БИЗНЕС КАРТЫ", "БИЗНЕС КРЕДИТЫ"]
+        found_product_keywords = []
+        
+        for keyword in product_keywords:
+            if keyword in question_upper:
+                found_product_keywords.append(keyword)
+        
+        # Если нашли ключевые слова продуктов, используем их
+        if found_product_keywords:
+            search_terms = found_product_keywords.copy()
+            return list(set(search_terms))  # Убираем дубликаты
+        
         # Если нет основных ключевых слов, используем стандартную логику
         # Ищем после ключевых слов
         keywords = []
@@ -178,8 +191,12 @@ class MarketingAnalyticsAgent:
                 break
         
         if not keywords:
-            # Если не нашли, берём все значимые слова
-            keywords = [w for w in re.split(r"[\s,()]+", question_upper) if len(w) > 2]
+            # Если не нашли, берём все значимые слова, исключая служебные
+            stop_words = ["СДЕЛАЙ", "ОТЧЕТ", "ОТЧЁТ", "ПО", "ПОКАЖИ", "АНАЛИЗ", "СТАТИСТИКА", "ДАННЫЕ", "КАМПАНИИ", "КАМПАНИЯ"]
+            keywords = []
+            for w in re.split(r"[\s,()]+", question_upper):
+                if len(w) > 2 and w not in stop_words:
+                    keywords.append(w)
         
         # Обрабатываем каждое слово с улучшенной логикой
         search_terms = []
@@ -487,9 +504,13 @@ class MarketingAnalyticsAgent:
             mk = fallback_main_keyword if fallback_main_keyword else found_main_keyword
             where_conditions.append(f'"Название кампании" LIKE "%{mk.upper()}%"')
         elif search_terms and not is_general_stats:
+            # Используем OR для поиска по любому из терминов, а не AND
+            term_conditions = []
             for term in search_terms:
                 if len(term) > 2:
-                    where_conditions.append(f'"Название кампании" LIKE "%{term.upper()}%"')
+                    term_conditions.append(f'"Название кампании" LIKE "%{term.upper()}%"')
+            if term_conditions:
+                where_conditions.append(f"({' OR '.join(term_conditions)})")
         # ORDER BY и LIMIT
         order_by = []
         if any(word in question_lower for word in ["дорогой", "расход", "стоимость"]):
