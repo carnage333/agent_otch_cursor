@@ -181,14 +181,37 @@ class IntelligentMarketingAgent:
         """Базовая логика понимания запроса без LLM"""
         question_lower = user_question.lower()
         
-        # Определяем намерение
-        if any(word in question_lower for word in ['кампания', 'фрк', 'годовой', 'performance']):
-            return {
-                "intent": "search_campaigns",
-                "tools_needed": ["search_campaigns", "get_campaign_data"],
-                "parameters": {"search_terms": user_question},
-                "response_type": "report"
-            }
+        # Извлекаем ключевые слова для поиска кампаний
+        search_keywords = []
+        if 'фрк' in question_lower:
+            if 'фрк1' in question_lower:
+                search_keywords.append('ФРК1')
+            elif 'фрк4' in question_lower:
+                search_keywords.append('ФРК4')
+            else:
+                search_keywords.append('ФРК')
+        
+        if 'годовой' in question_lower or 'performance' in question_lower:
+            search_keywords.append('Годовой')
+        
+        if 'отчет' in question_lower or 'покажи' in question_lower or 'сделай' in question_lower:
+            # Если есть ключевые слова для поиска, используем их
+            if search_keywords:
+                return {
+                    "intent": "search_campaigns",
+                    "tools_needed": ["search_campaigns", "get_campaign_data"],
+                    "parameters": {"search_terms": " ".join(search_keywords)},
+                    "response_type": "report"
+                }
+            else:
+                # Иначе ищем по всему вопросу
+                return {
+                    "intent": "search_campaigns",
+                    "tools_needed": ["search_campaigns", "get_campaign_data"],
+                    "parameters": {"search_terms": user_question},
+                    "response_type": "report"
+                }
+        
         elif any(word in question_lower for word in ['ctr', 'cpc', 'конверсия', 'метрика']):
             return {
                 "intent": "explain_metric",
@@ -215,21 +238,53 @@ class IntelligentMarketingAgent:
         """Поиск кампаний в базе данных"""
         try:
             conn = sqlite3.connect(self.db_path)
+            
+            # Улучшенный поиск с обработкой различных вариантов
+            search_variants = [
+                search_terms.upper(),
+                search_terms.upper().replace(' ', ''),
+                search_terms.upper().replace('-', ''),
+                search_terms.upper().replace('_', ''),
+                search_terms.upper().replace(' ', '').replace('-', ''),
+                search_terms.upper().replace(' ', '').replace('_', '')
+            ]
+            
+            # Создаем условия для поиска
+            conditions = []
+            for variant in search_variants:
+                if len(variant) > 1:  # Игнорируем слишком короткие варианты
+                    conditions.append(f'UPPER("Название кампании") LIKE "%{variant}%"')
+            
+            if not conditions:
+                conditions = [f'UPPER("Название кампании") LIKE "%{search_terms.upper()}%"']
+            
             query = f'''
             SELECT DISTINCT "Название кампании", "Площадка"
             FROM campaign_metrics 
-            WHERE UPPER("Название кампании") LIKE '%{search_terms.upper()}%'
+            WHERE {" OR ".join(conditions)}
             LIMIT 10
             '''
+            
+            print(f"🔍 SQL запрос для поиска: {query}")
+            
             df = pd.read_sql_query(query, conn)
             conn.close()
             
-            return {
+            result = {
                 "success": True,
                 "campaigns": df.to_dict('records') if not df.empty else [],
                 "count": len(df)
             }
+            
+            print(f"📋 Найдено кампаний: {result['count']}")
+            if result['campaigns']:
+                print("📋 Найденные кампании:")
+                for campaign in result['campaigns']:
+                    print(f"  - {campaign['Название кампании']}")
+            
+            return result
         except Exception as e:
+            print(f"❌ Ошибка поиска: {e}")
             return {"success": False, "error": str(e)}
     
     def get_campaign_data(self, campaign_name: str) -> Dict:
