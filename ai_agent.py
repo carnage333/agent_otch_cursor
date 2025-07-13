@@ -3,9 +3,17 @@ import pandas as pd
 import json
 from typing import Dict, List, Optional, Tuple
 import re
-from simple_vector_rag import SimpleVectorRAG
-from marketing_goals import marketing_goals
 from datetime import datetime
+
+# Пытаемся импортировать RAG систему, но не блокируем запуск если она недоступна
+try:
+    from simple_vector_rag import SimpleVectorRAG
+    RAG_AVAILABLE = True
+except ImportError:
+    RAG_AVAILABLE = False
+    print("RAG система недоступна, будет использоваться упрощенный режим")
+
+from marketing_goals import marketing_goals
 
 class MarketingAnalyticsAgent:
     """
@@ -16,8 +24,17 @@ class MarketingAnalyticsAgent:
         self.db_path = db_path
         self.conversation_history = []
         self.domain_knowledge = self._load_domain_knowledge()
-        self.rag_system = SimpleVectorRAG()
         
+        # Инициализируем RAG систему только если она доступна
+        if RAG_AVAILABLE:
+            try:
+                self.rag_system = SimpleVectorRAG()
+            except Exception as e:
+                print(f"Ошибка инициализации RAG системы: {e}")
+                self.rag_system = None
+        else:
+            self.rag_system = None
+    
     def _load_domain_knowledge(self) -> Dict:
         """Загрузка знаний предметной области"""
         return {

@@ -1,30 +1,30 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+# Большие файлы данных
+*.db
+*.sqlite
+*.sqlite3
+*.csv
+*.xlsx
+*.xls
 
-# Virtual environments
-venv/
+# Временные файлы
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
 env/
+venv/
+.venv/
 ENV/
+
+# Индексы и кэши
+*.index
+*.cache
+.vector_cache/
+faiss_index/
+
+# Логи
+*.log
 
 # IDE
 .vscode/
@@ -32,30 +32,11 @@ ENV/
 *.swp
 *.swo
 
-# OS
+# Системные файлы
 .DS_Store
 Thumbs.db
 
-# Streamlit
-.streamlit/
-
-# Database (исключаем большие файлы)
-marketing_analytics.db
-*.db
-*.sqlite
-*.sqlite3
-
-# Large CSV files
-rko_funnel_sample-1750856109631.csv
-rko_econometric_sample.csv
-
-# Vector index files
-*.faiss
-simple_rag_index.faiss
-
-# Logs
-*.log
-
-# Environment variables
+# Конфиденциальные данные
 .env
-.env.local 
+*.key
+*.pem 

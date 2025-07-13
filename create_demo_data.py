@@ -1,115 +1,149 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import pandas as pd
 import sqlite3
-import os
+import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
 import random
 
-def create_demo_data():
-    """Создание демо-данных для AI-агента"""
+def create_demo_database():
+    """Создает демо-базу данных с небольшим объемом данных для деплоя"""
     
-    print("Создание демо-данных...")
+    # Создаем подключение к базе данных
+    conn = sqlite3.connect('marketing_analytics.db')
+    cursor = conn.cursor()
     
-    # Создаем данные для campaign_metrics
+    # Создаем таблицы
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS campaign_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        campaign_name TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        date TEXT NOT NULL,
+        impressions INTEGER,
+        clicks INTEGER,
+        cost_before_vat REAL,
+        visits INTEGER,
+        conversions INTEGER,
+        revenue REAL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+    
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS funnel_data (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        utm_source TEXT,
+        utm_medium TEXT,
+        utm_campaign TEXT,
+        utm_content TEXT,
+        utm_term TEXT,
+        step_name TEXT,
+        step_order INTEGER,
+        visitors INTEGER,
+        conversions INTEGER,
+        conversion_rate REAL,
+        date TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+    
+    # Генерируем демо-данные для кампаний
     campaigns = [
-        "ФРК4 Бизнес-Фест, апрель-декабрь 2025",
-        "ФРК4_Продвижение_РКО в рупиях за 0_май-июнь 2025",
-        "ФРК1 Годовой Performance 2025",
-        "СберБизнес РКО для ИП",
-        "Бизнес-старт РКО",
-        "Торговля B2C РКО"
+        "ФРК4 БИЗНЕС-ФЕСТ",
+        "ФРК4_ПРОДВИЖЕНИЕ_РКО", 
+        "ФРК1",
+        "ГОДОВОЙ PERFORMANCE",
+        "СБЕРБИЗНЕС",
+        "БИЗНЕС-СТАРТ",
+        "ТОРГОВЛЯ B2C"
     ]
     
-    platforms = [
-        "Telegram Ads",
-        "Yandex.Direct", 
-        "Google Ads",
-        "VK Реклама",
-        "MyTarget",
-        "Regionza",
-        "NativeRent"
-    ]
+    platforms = ["Telegram Ads", "Regionza", "NativeRent", "yandex", "vsp"]
     
-    # Генерируем данные
+    # Генерируем данные за последние 7 дней (вместо 30)
+    start_date = datetime.now() - timedelta(days=7)
     campaign_data = []
-    start_date = datetime(2025, 1, 1)
     
-    for campaign in campaigns:
-        for platform in platforms:
-            # Генерируем реалистичные данные
-            impressions = random.randint(10000, 500000)
-            clicks = random.randint(50, 2000)
-            cost = random.randint(5000, 100000)
-            visits = random.randint(10, 500)
-            
-            # Рассчитываем CTR и CPC
-            ctr = round((clicks / impressions) * 100, 2) if impressions > 0 else 0
-            cpc = round(cost / clicks, 2) if clicks > 0 else 0
-            
-            # Добавляем вариативность по датам
-            for i in range(30):
-                date = start_date + timedelta(days=i)
-                
-                # Добавляем случайные колебания
-                daily_impressions = max(0, impressions + random.randint(-1000, 1000))
-                daily_clicks = max(0, clicks + random.randint(-10, 10))
-                daily_cost = max(0, cost + random.randint(-100, 100))
-                daily_visits = max(0, visits + random.randint(-5, 5))
+    for i in range(7):  # 7 дней вместо 30
+        current_date = start_date + timedelta(days=i)
+        date_str = current_date.strftime('%Y-%m-%d')
+        
+        for campaign in campaigns[:3]:  # Только первые 3 кампании
+            for platform in platforms[:3]:  # Только первые 3 платформы
+                # Генерируем реалистичные данные
+                impressions = random.randint(100, 5000)  # Уменьшили диапазон
+                clicks = random.randint(10, int(impressions * 0.1))
+                ctr = clicks / impressions if impressions > 0 else 0
+                cpc = random.uniform(10, 100)
+                cost = clicks * cpc
+                visits = int(clicks * random.uniform(0.7, 1.2))
+                conversions = int(visits * random.uniform(0.01, 0.05))
+                revenue = conversions * random.uniform(500, 2000)
                 
                 campaign_data.append({
                     'campaign_name': campaign,
                     'platform': platform,
-                    'impressions': daily_impressions,
-                    'clicks': daily_clicks,
-                    'cost_before_vat': daily_cost,
-                    'visits': daily_visits,
-                    'date': date.strftime('%Y-%m-%d')
+                    'date': date_str,
+                    'impressions': impressions,
+                    'clicks': clicks,
+                    'cost_before_vat': round(cost, 2),
+                    'visits': visits,
+                    'conversions': conversions,
+                    'revenue': round(revenue, 2)
                 })
     
-    # Создаем DataFrame
+    # Создаем DataFrame и сохраняем в базу
     df_campaigns = pd.DataFrame(campaign_data)
+    df_campaigns.to_sql('campaign_metrics', conn, if_exists='replace', index=False)
     
-    # Создаем данные для funnel_data
-    utm_sources = [
-        "google",
-        "yandex", 
-        "telegram",
-        "vk",
-        "direct",
-        "organic"
-    ]
+    # Генерируем демо-данные для воронки
+    utm_sources = ["google", "yandex", "telegram", "vk", "direct"]
+    utm_mediums = ["cpc", "banner", "social", "email", "organic"]
+    utm_campaigns = ["brand", "product", "seasonal", "promo", "retargeting"]
     
     funnel_data = []
+    step_names = ["Показ", "Клик", "Переход", "Регистрация", "Оплата"]
     
-    for source in utm_sources:
-        visits = random.randint(1000, 10000)
-        submits = random.randint(50, 500)
-        accounts_opened = random.randint(20, 200)
-        created = random.randint(10, 100)
-        calls_answered = random.randint(30, 300)
-        quality_leads = random.randint(40, 400)
+    for i in range(5):  # 5 записей вместо 20
+        current_date = start_date + timedelta(days=random.randint(0, 6))
+        date_str = current_date.strftime('%Y-%m-%d')
         
-        funnel_data.append({
-            'utm_source': source,
-            'visits': visits,
-            'submits': submits,
-            'accounts_opened': accounts_opened,
-            'created': created,
-            'calls_answered': calls_answered,
-            'quality_leads': quality_leads
-        })
+        for step_order, step_name in enumerate(step_names, 1):
+            visitors = random.randint(50, 1000)  # Уменьшили диапазон
+            conversion_rate = random.uniform(0.1, 0.8)
+            conversions = int(visitors * conversion_rate)
+            
+            funnel_data.append({
+                'utm_source': random.choice(utm_sources),
+                'utm_medium': random.choice(utm_mediums),
+                'utm_campaign': random.choice(utm_campaigns),
+                'utm_content': f"content_{random.randint(1, 5)}",
+                'utm_term': f"term_{random.randint(1, 10)}",
+                'step_name': step_name,
+                'step_order': step_order,
+                'visitors': visitors,
+                'conversions': conversions,
+                'conversion_rate': round(conversion_rate, 4),
+                'date': date_str
+            })
     
+    # Создаем DataFrame и сохраняем в базу
     df_funnel = pd.DataFrame(funnel_data)
+    df_funnel.to_sql('funnel_data', conn, if_exists='replace', index=False)
     
-    # Сохраняем в CSV файлы
-    df_campaigns.to_csv('rko_econometric_sample.csv', index=False)
-    df_funnel.to_csv('rko_funnel_sample-1750856109631.csv', index=False)
+    conn.commit()
+    conn.close()
     
-    print(f"Создано {len(df_campaigns)} записей для campaign_metrics")
-    print(f"Создано {len(df_funnel)} записей для funnel_data")
-    print("Демо-данные сохранены в CSV файлы")
+    print("✅ Демо-база данных создана успешно!")
+    print(f"📊 Создано {len(campaign_data)} записей кампаний")
+    print(f"🔄 Создано {len(funnel_data)} записей воронки")
+    
+    # Проверяем размер файла
+    import os
+    file_size = os.path.getsize('marketing_analytics.db') / (1024 * 1024)
+    print(f"📁 Размер базы данных: {file_size:.2f} МБ")
 
 if __name__ == "__main__":
-    create_demo_data() 
+    create_demo_database() 

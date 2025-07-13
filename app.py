@@ -193,9 +193,18 @@ init_db.init_database()
 # Инициализация агента
 @st.cache_resource
 def get_agent():
-    return MarketingAnalyticsAgent()
+    try:
+        return MarketingAnalyticsAgent()
+    except Exception as e:
+        st.error(f"Ошибка инициализации агента: {e}")
+        return None
 
 agent = get_agent()
+
+# Проверяем, что агент инициализирован
+if agent is None:
+    st.error("Не удалось инициализировать агент. Приложение не может работать.")
+    st.stop()
 
 # Вспомогательная функция для обработки SQL запросов
 def process_sql_display(report):
@@ -276,7 +285,7 @@ if st.session_state.pending_campaign_select:
     with col1:
         if st.button("📊 Показать отчет", key=f"show_report_{st.session_state.pending_user_question}"):
             if selected_campaign == "Все кампании":
-                # Для "Все кампании" формируем SQL запрос для всех найденных кампаний
+                # Для "Все кампаний" формируем SQL запрос для всех найденных кампаний
                 campaign_conditions = " OR ".join([f"campaign_name = '{campaign}'" for campaign in st.session_state.pending_campaign_select])
                 sql_query = f"""
                 SELECT 
@@ -293,19 +302,25 @@ if st.session_state.pending_campaign_select:
                 GROUP BY campaign_name, platform
                 ORDER BY campaign_name ASC
                 """
-                df = agent.execute_query(sql_query)
-                analysis = agent.analyze_data(df, str(st.session_state.pending_user_question))
-                response = agent.generate_report(analysis, str(st.session_state.pending_user_question))
-                # Добавляем SQL запрос в отчет
-                response = f"\n## 🔍 SQL запрос\n```sql\n{sql_query}\n```\n" + response
+                if agent:
+                    df = agent.execute_query(sql_query)
+                    analysis = agent.analyze_data(df, str(st.session_state.pending_user_question))
+                    response = agent.generate_report(analysis, str(st.session_state.pending_user_question))
+                    # Добавляем SQL запрос в отчет
+                    response = f"\n## 🔍 SQL запрос\n```sql\n{sql_query}\n```\n" + response
+                else:
+                    response = "❌ Ошибка: агент недоступен"
             else:
                 # Формируем SQL запрос только для выбранной кампании
                 sql_query = f"SELECT campaign_name, platform, SUM(impressions) as impressions, SUM(clicks) as clicks, SUM(cost_before_vat) as cost, SUM(visits) as visits, ROUND(SUM(clicks) * 100.0 / SUM(impressions), 2) as ctr, ROUND(SUM(cost_before_vat) / SUM(clicks), 2) as cpc FROM campaign_metrics WHERE campaign_name = '{selected_campaign}' GROUP BY campaign_name, platform ORDER BY campaign_name ASC"
-                df = agent.execute_query(sql_query)
-                analysis = agent.analyze_data(df, f"Сделай отчет по кампании {selected_campaign}")
-                response = agent.generate_report(analysis, f"Сделай отчет по кампании {selected_campaign}")
-                # Добавляем SQL запрос в отчет
-                response = f"\n## 🔍 SQL запрос\n```sql\n{sql_query}\n```\n" + response
+                if agent:
+                    df = agent.execute_query(sql_query)
+                    analysis = agent.analyze_data(df, f"Сделай отчет по кампании {selected_campaign}")
+                    response = agent.generate_report(analysis, f"Сделай отчет по кампании {selected_campaign}")
+                    # Добавляем SQL запрос в отчет
+                    response = f"\n## 🔍 SQL запрос\n```sql\n{sql_query}\n```\n" + response
+                else:
+                    response = "❌ Ошибка: агент недоступен"
             processed_response, sql_query = process_sql_display(response)
             st.session_state.chat_history.append({
                 "role": "assistant",
@@ -344,20 +359,23 @@ if user_question and st.session_state.pending_campaign_select:
 
 # --- Новая логика выбора кампании ---
 if user_question and not st.session_state.pending_campaign_select:
-    matching_campaigns = agent.get_matching_campaigns(user_question)
-    if len(matching_campaigns) > 1:
-        st.session_state.pending_campaign_select = matching_campaigns
-        st.session_state.pending_user_question = user_question
-        st.session_state.chat_history.append({"role": "user", "content": user_question})
-        st.rerun()
+    if agent:
+        matching_campaigns = agent.get_matching_campaigns(user_question)
+        if len(matching_campaigns) > 1:
+            st.session_state.pending_campaign_select = matching_campaigns
+            st.session_state.pending_user_question = user_question
+            st.session_state.chat_history.append({"role": "user", "content": user_question})
+            st.rerun()
+        else:
+            st.session_state.chat_history.append({"role": "user", "content": user_question})
+            with st.spinner("🤖 Агент анализирует данные..."):
+                response = agent.process_question(user_question)
+            processed_response, sql_query = process_sql_display(response)
+            st.session_state.chat_history.append({
+                "role": "assistant",
+                "content": processed_response,
+                "sql_query": sql_query
+            })
+            st.rerun()
     else:
-        st.session_state.chat_history.append({"role": "user", "content": user_question})
-        with st.spinner("🤖 Агент анализирует данные..."):
-            response = agent.process_question(user_question)
-        processed_response, sql_query = process_sql_display(response)
-        st.session_state.chat_history.append({
-            "role": "assistant",
-            "content": processed_response,
-            "sql_query": sql_query
-        })
-        st.rerun() 
+        st.error("❌ Агент недоступен. Пожалуйста, перезапустите приложение.") 
