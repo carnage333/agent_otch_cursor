@@ -332,10 +332,17 @@ with chat_container:
                                 df = pd.DataFrame(chart["data"])
                                 
                                 # График показов и кликов
-                                fig_performance = px.scatter(df, x='impressions', y='clicks',
-                                                           size='cost', color='platform',
-                                                           hover_data=['campaign', 'ctr', 'cpc'],
-                                                           title='Эффективность кампаний')
+                                # Очищаем данные от None/NaN значений
+                                df_clean = df.dropna()
+                                if not df_clean.empty:
+                                    fig_performance = px.scatter(df_clean, x='impressions', y='clicks',
+                                                               size='cost', color='platform',
+                                                               hover_data=['campaign', 'ctr', 'cpc'],
+                                                               title='Эффективность кампаний')
+                                    fig_performance.update_layout(height=400)
+                                    st.plotly_chart(fig_performance, use_container_width=True)
+                                else:
+                                    st.warning("⚠️ Недостаточно данных для построения графика")
                                 fig_performance.update_layout(height=400)
                                 st.plotly_chart(fig_performance, use_container_width=True)
                 
@@ -437,140 +444,4 @@ if st.session_state.chat_history:
             st.success("✅ История диалога очищена!")
             st.rerun()
 
-# --- Новый блок: обработка пользовательского запроса ---
-def handle_user_query(user_question):
-    # 1. Найти кампании по вопросу
-    matching_campaigns = agent.get_matching_campaigns(user_question)
-    if not matching_campaigns:
-        return "Нет данных по вашему запросу.", None, None, None, None
-    # 2. Если одна кампания — строим отчет по ней
-    if len(matching_campaigns) == 1:
-        selected_campaign = matching_campaigns[0]
-        sql_query = agent.generate_sql_query(selected_campaign)
-        df = agent.execute_query(sql_query)
-        if df.empty:
-            return "Нет данных по выбранной кампании.", None, None, None, None
-        analysis = agent.analyze_data(df, selected_campaign)
-        report = agent.generate_report(analysis, selected_campaign, sql_query)
-        excel_data = agent.generate_csv_report(analysis, selected_campaign)
-        dashboard_data = agent.generate_dashboard_data(analysis)
-        return report, sql_query, excel_data, dashboard_data, None
-    # 3. Если несколько кампаний — предложить выбрать
-    return None, None, None, None, matching_campaigns
-
-# --- В основном потоке Streamlit ---
-user_question = st.chat_input("💬 Задайте вопрос агенту...")
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Сброс ожидания выбора кампании при новом вопросе
-if user_question and st.session_state.pending_campaign_select:
-    st.session_state.pending_campaign_select = None
-    st.session_state.pending_user_question = None
-
-# --- Новая логика выбора кампании ---
-if user_question and not st.session_state.pending_campaign_select:
-    if agent:
-        # Используем старый метод поиска кампаний
-        matching_campaigns = agent.get_matching_campaigns(user_question)
-        if len(matching_campaigns) > 1:
-            st.session_state.pending_campaign_select = matching_campaigns
-            st.session_state.pending_user_question = user_question
-            st.session_state.chat_history.append({"role": "user", "content": user_question})
-            st.rerun()
-        elif len(matching_campaigns) == 1:
-            # Если найдена только одна кампания, сразу показываем отчет
-            st.session_state.chat_history.append({"role": "user", "content": user_question})
-            with st.spinner("🤖 Агент анализирует данные..."):
-                response, sql_query, excel_data, dashboard_data = agent.process_question(user_question)
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": response,
-                "sql_query": sql_query,
-                "excel_data": excel_data,
-                "dashboard_data": dashboard_data
-            })
-            st.rerun()
-        else:
-            # Если кампании не найдены, показываем сообщение об ошибке
-            st.session_state.chat_history.append({"role": "user", "content": user_question})
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": "❌ Не найдено кампаний по вашему запросу. Попробуйте изменить формулировку вопроса.",
-                "sql_query": ""
-            })
-            st.rerun()
-    else:
-        st.error("❌ Агент недоступен. Пожалуйста, перезапустите приложение.")
-
-# Если ожидается выбор кампании
-if st.session_state.pending_campaign_select:
-    st.markdown("""
-    <div class="info-message">
-        <h4>🎯 Найдено несколько кампаний</h4>
-        <p>Пожалуйста, выберите одну для детального отчета или выберите 'Все кампании' для общего анализа.</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    campaign_options = ["Все кампании"] + st.session_state.pending_campaign_select
-    selected_campaign = st.selectbox("Выберите кампанию:", campaign_options, key=f"select_{st.session_state.pending_user_question}")
-    
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        if st.button("📊 Показать отчет", key=f"show_report_{st.session_state.pending_user_question}"):
-            if selected_campaign == "Все кампании":
-                # Для "Все кампаний" формируем SQL запрос для всех найденных кампаний
-                campaign_conditions = " OR ".join([f"\"Название кампании\" = '{campaign}'" for campaign in st.session_state.pending_campaign_select])
-                sql_query = f"""
-                SELECT 
-                    "Название кампании" as campaign_name,
-                    "Площадка" as platform,
-                    SUM("Показы") as impressions,
-                    SUM("Клики") as clicks,
-                    SUM("Расход до НДС") as cost,
-                    SUM("Визиты") as visits,
-                    ROUND(SUM("Клики") * 100.0 / SUM("Показы"), 2) as ctr,
-                    ROUND(SUM("Расход до НДС") / SUM("Клики"), 2) as cpc
-                FROM campaign_metrics 
-                WHERE {campaign_conditions}
-                GROUP BY "Название кампании", "Площадка"
-                ORDER BY "Название кампании" ASC
-                """
-                if agent:
-                    # Используем старый рабочий агент
-                    response, sql_query, excel_data, dashboard_data = agent.process_question(str(st.session_state.pending_user_question))
-                    # SQL запрос передается отдельно
-                else:
-                    response = "❌ Ошибка: агент недоступен"
-                    sql_query = ""
-                    excel_data = None
-                    dashboard_data = None
-            else:
-                # Формируем SQL запрос только для выбранной кампании
-                # Используем LIKE для более гибкого поиска
-                sql_query = f"SELECT \"Название кампании\" as campaign_name, \"Площадка\" as platform, SUM(\"Показы\") as impressions, SUM(\"Клики\") as clicks, SUM(\"Расход до НДС\") as cost, SUM(\"Визиты\") as visits, ROUND(SUM(\"Клики\") * 100.0 / SUM(\"Показы\"), 2) as ctr, ROUND(SUM(\"Расход до НДС\") / SUM(\"Клики\"), 2) as cpc FROM campaign_metrics WHERE \"Название кампании\" LIKE '%{selected_campaign}%' GROUP BY \"Название кампании\", \"Площадка\" ORDER BY \"Название кампании\" ASC"
-                if agent:
-                    # Используем старый рабочий агент
-                    response, sql_query, excel_data, dashboard_data = agent.process_question(f"Сделай отчет по кампании {selected_campaign}")
-                    # SQL запрос передается отдельно
-                else:
-                    response = "❌ Ошибка: агент недоступен"
-                    sql_query = ""
-                    excel_data = None
-                    dashboard_data = None
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": response,
-                "sql_query": sql_query,
-                "excel_data": excel_data,
-                "dashboard_data": dashboard_data
-            })
-            st.session_state.pending_campaign_select = None
-            st.session_state.pending_user_question = None
-            st.rerun()
-    
-    with col2:
-        if st.button("🔄 Отменить", key=f"cancel_{st.session_state.pending_user_question}"):
-            st.session_state.pending_campaign_select = None
-            st.session_state.pending_user_question = None
-            st.rerun() 
+ 
