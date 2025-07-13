@@ -437,47 +437,50 @@ if st.session_state.chat_history:
             st.success("✅ История диалога очищена!")
             st.rerun()
 
-# Поле ввода с улучшенным дизайном
-user_question = st.chat_input("💬 Задайте вопрос агенту...")
+# --- Новый блок: обработка пользовательского запроса ---
+def handle_user_query(user_question):
+    # 1. Найти кампании по вопросу
+    matching_campaigns = agent.get_matching_campaigns(user_question)
+    if not matching_campaigns:
+        return "Нет данных по вашему запросу.", None, None, None, None
+    # 2. Если одна кампания — строим отчет по ней
+    if len(matching_campaigns) == 1:
+        selected_campaign = matching_campaigns[0]
+        sql_query = agent.generate_sql_query(selected_campaign)
+        df = agent.execute_query(sql_query)
+        if df.empty:
+            return "Нет данных по выбранной кампании.", None, None, None, None
+        analysis = agent.analyze_data(df, selected_campaign)
+        report = agent.generate_report(analysis, selected_campaign, sql_query)
+        excel_data = agent.generate_csv_report(analysis, selected_campaign)
+        dashboard_data = agent.generate_dashboard_data(analysis)
+        return report, sql_query, excel_data, dashboard_data, None
+    # 3. Если несколько кампаний — предложить выбрать
+    return None, None, None, None, matching_campaigns
 
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Сброс ожидания выбора кампании при новом вопросе
-if user_question and st.session_state.pending_campaign_select:
-    st.session_state.pending_campaign_select = None
-    st.session_state.pending_user_question = None
-
-# --- Новая логика выбора кампании ---
-if user_question and not st.session_state.pending_campaign_select:
-    if agent:
-        # Используем старый метод поиска кампаний
-        matching_campaigns = agent.get_matching_campaigns(user_question)
-        if len(matching_campaigns) > 1:
-            st.session_state.pending_campaign_select = matching_campaigns
-            st.session_state.pending_user_question = user_question
-            st.session_state.chat_history.append({"role": "user", "content": user_question})
-            st.rerun()
-        elif len(matching_campaigns) == 1:
-            # Если найдена только одна кампания, сразу показываем отчет
-            st.session_state.chat_history.append({"role": "user", "content": user_question})
-            with st.spinner("🤖 Агент анализирует данные..."):
-                response, sql_query, excel_data, dashboard_data = agent.process_question(user_question)
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": response,
-                "sql_query": sql_query,
-                "excel_data": excel_data,
-                "dashboard_data": dashboard_data
-            })
-            st.rerun()
-        else:
-            # Если кампании не найдены, показываем сообщение об ошибке
-            st.session_state.chat_history.append({"role": "user", "content": user_question})
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": "❌ Не найдено кампаний по вашему запросу. Попробуйте изменить формулировку вопроса.",
-                "sql_query": ""
-            })
-            st.rerun()
-    else:
-        st.error("❌ Агент недоступен. Пожалуйста, перезапустите приложение.") 
+# --- В основном потоке Streamlit ---
+user_question = st.text_input("Введите ваш вопрос по кампаниям:")
+if user_question:
+    report, sql_query, excel_data, dashboard_data, campaign_choices = handle_user_query(user_question)
+    if campaign_choices:
+        selected_campaign = st.selectbox("Выберите кампанию:", campaign_choices)
+        if selected_campaign:
+            sql_query = agent.generate_sql_query(selected_campaign)
+            df = agent.execute_query(sql_query)
+            if not df.empty:
+                analysis = agent.analyze_data(df, selected_campaign)
+                report = agent.generate_report(analysis, selected_campaign, sql_query)
+                excel_data = agent.generate_csv_report(analysis, selected_campaign)
+                dashboard_data = agent.generate_dashboard_data(analysis)
+            else:
+                report = "Нет данных по выбранной кампании."
+    if report:
+        st.markdown(report)
+        if sql_query:
+            with st.expander("🔍 Показать SQL запрос", expanded=False):
+                st.code(sql_query, language="sql")
+        if excel_data:
+            st.download_button("📊 Скачать CSV отчет", data=excel_data, file_name="report.csv", mime="text/csv")
+        if dashboard_data:
+            # ... отрисовка дашборда ...
+            pass 
