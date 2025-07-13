@@ -251,12 +251,7 @@ with chat_container:
                         file_name=file_name,
                         mime=mime_type
                     )
-                else:
-                    # Отладочная информация
-                    st.info(f"🔍 Отладка: excel_data в сообщении: {'есть' if 'excel_data' in message else 'нет'}")
-                    if 'excel_data' in message:
-                        st.info(f"🔍 Отладка: excel_data пустой: {not message['excel_data']}")
-                        st.info(f"🔍 Отладка: длина excel_data: {len(message['excel_data']) if message['excel_data'] else 0}")
+
                 # Убираем сообщение "Отчет недоступен" так как отчет уже сгенерирован в тексте выше
                 
                 # Отображение дашборда

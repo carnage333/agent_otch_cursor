@@ -1305,25 +1305,16 @@ class MarketingAnalyticsAgent:
         """
         Генерация CSV отчета на основе анализа данных
         """
-        print(f"🔍 DEBUG: generate_csv_report вызвана с question: {question}")
-        print(f"🔍 DEBUG: analysis keys: {list(analysis.keys()) if analysis else 'None'}")
-        
         # Проверяем, есть ли данные для анализа
         if not analysis or "error" in analysis:
-            print(f"🔍 DEBUG: Нет данных для анализа или есть ошибка")
             # Если нет данных, создаем простой CSV с сообщением
             csv_content = f"Отчет по запросу: {question}\n\nНет данных для анализа по вашему запросу."
-            result = csv_content.encode('utf-8')
-            print(f"🔍 DEBUG: Возвращаем простой CSV, длина: {len(result)}")
-            return result
+            return csv_content.encode('utf-8')
         
         # Проверяем, что analysis не пустой
         if not analysis:
-            print(f"🔍 DEBUG: analysis пустой")
             csv_content = f"Отчет по запросу: {question}\n\nОшибка: нет данных для анализа."
-            result = csv_content.encode('utf-8')
-            print(f"🔍 DEBUG: Возвращаем ошибку CSV, длина: {len(result)}")
-            return result
+            return csv_content.encode('utf-8')
         
         # Создаем CSV отчет
         csv_parts = []
@@ -1334,7 +1325,6 @@ class MarketingAnalyticsAgent:
         
         # Общая статистика
         summary = analysis.get("summary", {})
-        print(f"🔍 DEBUG: summary keys: {list(summary.keys()) if summary else 'None'}")
         
         if summary:
             csv_parts.append("ОБЩАЯ СТАТИСТИКА")
@@ -1350,7 +1340,6 @@ class MarketingAnalyticsAgent:
         
         # Детальная статистика по кампаниям
         if "campaigns" in summary and summary["campaigns"]:
-            print(f"🔍 DEBUG: Найдено кампаний: {len(summary['campaigns'])}")
             csv_parts.append("ДЕТАЛЬНАЯ СТАТИСТИКА ПО КАМПАНИЯМ")
             csv_parts.append("Кампания,Площадка,Показы,Клики,Расход (₽),Визиты,CTR (%),CPC (₽)")
             
@@ -1369,7 +1358,6 @@ class MarketingAnalyticsAgent:
         
         # Анализ по площадкам
         if "platforms" in summary and summary["platforms"]:
-            print(f"🔍 DEBUG: Найдено площадок: {len(summary['platforms'])}")
             csv_parts.append("АНАЛИЗ ПО ПЛОЩАДКАМ")
             csv_parts.append("Площадка,Показы,Клики,Расход (₽),Визиты,CTR (%),CPC (₽)")
             
@@ -1387,7 +1375,6 @@ class MarketingAnalyticsAgent:
         
         # Инсайты
         if analysis.get("insights"):
-            print(f"🔍 DEBUG: Найдено инсайтов: {len(analysis['insights'])}")
             csv_parts.append("КЛЮЧЕВЫЕ ИНСАЙТЫ")
             for insight in analysis["insights"]:
                 csv_parts.append(f"• {insight}")
@@ -1395,7 +1382,6 @@ class MarketingAnalyticsAgent:
         
         # Рекомендации
         if analysis.get("recommendations"):
-            print(f"🔍 DEBUG: Найдено рекомендаций: {len(analysis['recommendations'])}")
             csv_parts.append("РЕКОМЕНДАЦИИ")
             for rec in analysis["recommendations"]:
                 csv_parts.append(f"• {rec}")
@@ -1406,12 +1392,7 @@ class MarketingAnalyticsAgent:
             csv_parts.append("Нет данных для отображения в CSV")
         
         csv_content = "\n".join(csv_parts)
-        result = csv_content.encode('utf-8')
-        print(f"🔍 DEBUG: CSV сгенерирован, длина: {len(result)}")
-        print(f"🔍 DEBUG: Первые 200 символов: {result[:200]}")
-        print(f"🔍 DEBUG: csv_parts количество: {len(csv_parts)}")
-        print(f"🔍 DEBUG: csv_content длина: {len(csv_content)}")
-        return result
+        return csv_content.encode('utf-8')
     
     def generate_dashboard_data(self, analysis: Dict) -> Dict:
         """
