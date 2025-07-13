@@ -251,6 +251,12 @@ with chat_container:
                         file_name=file_name,
                         mime=mime_type
                     )
+                else:
+                    # Отладочная информация
+                    st.info(f"🔍 Отладка: excel_data в сообщении: {'есть' if 'excel_data' in message else 'нет'}")
+                    if 'excel_data' in message:
+                        st.info(f"🔍 Отладка: excel_data пустой: {not message['excel_data']}")
+                        st.info(f"🔍 Отладка: длина excel_data: {len(message['excel_data']) if message['excel_data'] else 0}")
                 # Убираем сообщение "Отчет недоступен" так как отчет уже сгенерирован в тексте выше
                 
                 # Отображение дашборда
@@ -388,6 +394,7 @@ if st.session_state.pending_campaign_select:
                             dashboard_data = None
                     try:
                         excel_data = agent.generate_csv_report(analysis, str(st.session_state.pending_user_question))
+                        print(f"CSV данные сгенерированы, длина: {len(excel_data) if excel_data else 0}")
                     except Exception as e:
                         print(f"Ошибка генерации CSV: {e}")
                         excel_data = None
@@ -416,6 +423,7 @@ if st.session_state.pending_campaign_select:
                             dashboard_data = None
                     try:
                         excel_data = agent.generate_csv_report(analysis, f"Сделай отчет по кампании {selected_campaign}")
+                        print(f"CSV данные сгенерированы, длина: {len(excel_data) if excel_data else 0}")
                     except Exception as e:
                         print(f"Ошибка генерации CSV: {e}")
                         excel_data = None
