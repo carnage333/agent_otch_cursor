@@ -206,24 +206,7 @@ if agent is None:
     st.error("Не удалось инициализировать агент. Приложение не может работать.")
     st.stop()
 
-# Вспомогательная функция для обработки SQL запросов
-def process_sql_display(report):
-    """Обрабатывает отображение SQL запросов в отчетах"""
-    if "## 🔍 SQL запрос" in report:
-        # Извлекаем SQL запрос
-        sql_start = report.find("## 🔍 SQL запрос")
-        sql_end = report.find("```", sql_start + len("## 🔍 SQL запрос"))
-        if sql_end != -1:
-            sql_end = report.find("\n```", sql_end)
-            if sql_end != -1:
-                sql_query = report[sql_start:sql_end + 4]
-                report_without_sql = report.replace(sql_query, "")
-                
-                # Возвращаем отчет без SQL и отдельно SQL запрос
-                sql_content = sql_query.replace("## 🔍 SQL запрос\n```sql\n", "").replace("\n```", "")
-                return report_without_sql, sql_content
-    
-    return report, None
+
 
 # Главный заголовок с градиентом
 st.markdown("""
@@ -305,24 +288,25 @@ if st.session_state.pending_campaign_select:
                 if agent:
                     df = agent.execute_query(sql_query)
                     analysis = agent.analyze_data(df, str(st.session_state.pending_user_question))
-                    response = agent.generate_report(analysis, str(st.session_state.pending_user_question))
-                    # SQL запрос уже добавляется в generate_report
+                    response = agent.generate_report(analysis, str(st.session_state.pending_user_question), sql_query)
+                    # SQL запрос передается отдельно
                 else:
                     response = "❌ Ошибка: агент недоступен"
+                    sql_query = ""
             else:
                 # Формируем SQL запрос только для выбранной кампании
                 sql_query = f"SELECT \"Название кампании\" as campaign_name, \"Площадка\" as platform, SUM(\"Показы\") as impressions, SUM(\"Клики\") as clicks, SUM(\"Расход до НДС\") as cost, SUM(\"Визиты\") as visits, ROUND(SUM(\"Клики\") * 100.0 / SUM(\"Показы\"), 2) as ctr, ROUND(SUM(\"Расход до НДС\") / SUM(\"Клики\"), 2) as cpc FROM campaign_metrics WHERE \"Название кампании\" = '{selected_campaign}' GROUP BY \"Название кампании\", \"Площадка\" ORDER BY \"Название кампании\" ASC"
                 if agent:
                     df = agent.execute_query(sql_query)
                     analysis = agent.analyze_data(df, f"Сделай отчет по кампании {selected_campaign}")
-                    response = agent.generate_report(analysis, f"Сделай отчет по кампании {selected_campaign}")
-                    # SQL запрос уже добавляется в generate_report
+                    response = agent.generate_report(analysis, f"Сделай отчет по кампании {selected_campaign}", sql_query)
+                    # SQL запрос передается отдельно
                 else:
                     response = "❌ Ошибка: агент недоступен"
-            processed_response, sql_query = process_sql_display(response)
+                    sql_query = ""
             st.session_state.chat_history.append({
                 "role": "assistant",
-                "content": processed_response,
+                "content": response,
                 "sql_query": sql_query
             })
             st.session_state.pending_campaign_select = None
@@ -367,11 +351,10 @@ if user_question and not st.session_state.pending_campaign_select:
         else:
             st.session_state.chat_history.append({"role": "user", "content": user_question})
             with st.spinner("🤖 Агент анализирует данные..."):
-                response = agent.process_question(user_question)
-            processed_response, sql_query = process_sql_display(response)
+                response, sql_query = agent.process_question(user_question)
             st.session_state.chat_history.append({
                 "role": "assistant",
-                "content": processed_response,
+                "content": response,
                 "sql_query": sql_query
             })
             st.rerun()

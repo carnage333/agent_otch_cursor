@@ -1257,7 +1257,8 @@ class MarketingAnalyticsAgent:
             "timestamp": datetime.now().isoformat()
         })
         
-        return report
+        # Возвращаем отчет и SQL запрос отдельно
+        return report, sql_query
     
     def get_conversation_history(self) -> List[Dict]:
         """Получение истории диалога"""
