@@ -33,13 +33,13 @@ except ImportError:
     FREE_LLM_AVAILABLE = False
     print("Библиотека requests недоступна для бесплатных LLM")
 
-# Пытаемся импортировать Ollama
+# Пытаемся импортировать Ollama (только для локальной разработки)
 try:
     import ollama
     OLLAMA_AVAILABLE = True
 except ImportError:
     OLLAMA_AVAILABLE = False
-    print("Ollama недоступен, будет использоваться Hugging Face или локальная RAG система")
+    print("Ollama недоступен (нормально для облачного развертывания)")
 
 from marketing_goals import marketing_goals
 
@@ -1324,16 +1324,15 @@ class MarketingAnalyticsAgent:
                 "avg_cpc": df.get("CPC", pd.Series()).mean() if "CPC" in df.columns else 0
             }
         
-        # Приоритет использования LLM (от лучшего к худшему):
-        # 1. OpenAI GPT (платный, но лучший)
-        # 2. Ollama (бесплатный, локальный)
-        # 3. Hugging Face (бесплатный, онлайн)
-        # 4. Локальная RAG система
-        # 5. Простые шаблоны
+        # Приоритет использования LLM для облачного развертывания:
+        # 1. OpenAI GPT (если настроен)
+        # 2. Hugging Face (бесплатный, онлайн)
+        # 3. Локальная RAG система
+        # 4. Простые шаблоны (всегда доступно)
         
         enhanced = False
         
-        # 1. Пробуем OpenAI GPT
+        # 1. Пробуем OpenAI GPT (если настроен)
         if should_use_enhancement and self.openai_available and not enhanced:
             try:
                 enhanced_report = self.enhance_report_with_openai(report, question, data_summary)
@@ -1344,18 +1343,7 @@ class MarketingAnalyticsAgent:
             except Exception as e:
                 print(f"Ошибка при обращении к OpenAI: {e}")
         
-        # 2. Пробуем Ollama (бесплатный, локальный)
-        if should_use_enhancement and OLLAMA_AVAILABLE and not enhanced:
-            try:
-                enhanced_report = self.enhance_report_with_ollama(report, question, data_summary)
-                if enhanced_report != report:
-                    report = enhanced_report
-                    print("✅ Отчет улучшен с помощью Ollama (бесплатный)")
-                    enhanced = True
-            except Exception as e:
-                print(f"Ошибка при обращении к Ollama: {e}")
-        
-        # 3. Пробуем Hugging Face (бесплатный, онлайн)
+        # 2. Пробуем Hugging Face (бесплатный, онлайн) - основной для облака
         if should_use_enhancement and FREE_LLM_AVAILABLE and not enhanced:
             try:
                 enhanced_report = self.enhance_report_with_huggingface(report, question, data_summary)
@@ -1366,7 +1354,7 @@ class MarketingAnalyticsAgent:
             except Exception as e:
                 print(f"Ошибка при обращении к Hugging Face: {e}")
         
-        # 4. Пробуем локальную RAG систему
+        # 3. Пробуем локальную RAG систему
         if should_use_enhancement and self.rag_system is not None and not enhanced:
             try:
                 enhanced_report = self.rag_system.enhance_report(report, question)
@@ -1377,7 +1365,7 @@ class MarketingAnalyticsAgent:
             except Exception as e:
                 print(f"Ошибка RAG системы: {e}")
         
-        # 5. Используем простые шаблоны (всегда доступно)
+        # 4. Используем простые шаблоны (всегда доступно)
         if should_use_enhancement and not enhanced:
             try:
                 enhanced_report = self.enhance_report_with_local_llm(report, question, data_summary)
@@ -1972,38 +1960,39 @@ class MarketingAnalyticsAgent:
             return report
         
         try:
-            # Используем бесплатный API Hugging Face
-            API_URL = "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium"
+            # Используем бесплатный API Hugging Face с более подходящей моделью
+            API_URL = "https://api-inference.huggingface.co/models/gpt2"
             
-            # Формируем промпт
-            prompt = f"""Ты опытный аналитик маркетинга. Улучши этот отчет:
+            # Формируем промпт для маркетингового анализа
+            prompt = f"""Marketing Analysis Report:
 
-Вопрос: {question}
-Отчет: {report}
+Question: {question}
+Current Report: {report}
 
-Добавь:
-1. Ключевые инсайты
-2. Конкретные рекомендации
-3. Объяснение метрик
-4. Следующие шаги
+Please enhance this report with:
+1. Key insights from the data
+2. Specific optimization recommendations
+3. Metric explanations
+4. Next steps for improvement
 
-Ответ:"""
+Enhanced Report:"""
 
             headers = {
-                "Authorization": "Bearer hf_xxx",  # Бесплатный токен
                 "Content-Type": "application/json"
             }
             
             payload = {
                 "inputs": prompt,
                 "parameters": {
-                    "max_length": 500,
-                    "temperature": 0.7,
-                    "do_sample": True
+                    "max_length": 300,
+                    "temperature": 0.8,
+                    "do_sample": True,
+                    "top_p": 0.9
                 }
             }
             
-            response = requests.post(API_URL, headers=headers, json=payload)
+            # Пробуем без токена (бесплатный доступ)
+            response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
             
             if response.status_code == 200:
                 result = response.json()
@@ -2012,7 +2001,13 @@ class MarketingAnalyticsAgent:
                     # Извлекаем только новую часть
                     if enhanced_text.startswith(prompt):
                         enhanced_text = enhanced_text[len(prompt):].strip()
-                    return enhanced_text if enhanced_text else report
+                    
+                    # Если получили осмысленный текст, добавляем его к отчету
+                    if enhanced_text and len(enhanced_text) > 50:
+                        enhanced_report = report + "\n\n## 🤖 AI-анализ\n\n" + enhanced_text
+                        return enhanced_report
+                    else:
+                        return report
                 else:
                     return report
             else:
