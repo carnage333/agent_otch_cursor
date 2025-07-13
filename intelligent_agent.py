@@ -181,21 +181,35 @@ class IntelligentMarketingAgent:
         """Базовая логика понимания запроса без LLM"""
         question_lower = user_question.lower()
         
-        # Извлекаем ключевые слова для поиска кампаний
-        search_keywords = []
-        if 'фрк' in question_lower:
+        # Проверяем, является ли это запросом о кампаниях
+        campaign_keywords = ['фрк', 'годовой', 'performance', 'кампания', 'отчет', 'покажи', 'сделай']
+        is_campaign_query = any(keyword in question_lower for keyword in campaign_keywords)
+        
+        # Проверяем, является ли это запросом о метриках
+        metric_keywords = ['ctr', 'cpc', 'конверсия', 'метрика', 'что такое']
+        is_metric_query = any(keyword in question_lower for keyword in metric_keywords)
+        
+        # Проверяем, является ли это запросом о сравнении
+        comparison_keywords = ['сравни', 'сравнение', 'топ', 'лучшие']
+        is_comparison_query = any(keyword in question_lower for keyword in comparison_keywords)
+        
+        # Проверяем, является ли это общим приветствием или простым вопросом
+        greeting_keywords = ['привет', 'здравствуй', 'hi', 'hello']
+        is_greeting = any(keyword in question_lower for keyword in greeting_keywords)
+        
+        if is_campaign_query:
+            # Извлекаем ключевые слова для поиска кампаний
+            search_keywords = []
             if 'фрк1' in question_lower:
                 search_keywords.append('ФРК1')
             elif 'фрк4' in question_lower:
                 search_keywords.append('ФРК4')
-            else:
+            elif 'фрк' in question_lower:
                 search_keywords.append('ФРК')
-        
-        if 'годовой' in question_lower or 'performance' in question_lower:
-            search_keywords.append('Годовой')
-        
-        if 'отчет' in question_lower or 'покажи' in question_lower or 'сделай' in question_lower:
-            # Если есть ключевые слова для поиска, используем их
+            
+            if 'годовой' in question_lower or 'performance' in question_lower:
+                search_keywords.append('Годовой')
+            
             if search_keywords:
                 return {
                     "intent": "search_campaigns",
@@ -204,7 +218,6 @@ class IntelligentMarketingAgent:
                     "response_type": "report"
                 }
             else:
-                # Иначе ищем по всему вопросу
                 return {
                     "intent": "search_campaigns",
                     "tools_needed": ["search_campaigns", "get_campaign_data"],
@@ -212,20 +225,30 @@ class IntelligentMarketingAgent:
                     "response_type": "report"
                 }
         
-        elif any(word in question_lower for word in ['ctr', 'cpc', 'конверсия', 'метрика']):
+        elif is_metric_query:
             return {
                 "intent": "explain_metric",
                 "tools_needed": ["explain_metric"],
                 "parameters": {"metric": user_question},
                 "response_type": "explanation"
             }
-        elif any(word in question_lower for word in ['сравни', 'сравнение']):
+        
+        elif is_comparison_query:
             return {
                 "intent": "compare_campaigns",
                 "tools_needed": ["compare_campaigns"],
                 "parameters": {"comparison_type": "campaigns"},
                 "response_type": "comparison"
             }
+        
+        elif is_greeting:
+            return {
+                "intent": "greeting",
+                "tools_needed": ["get_database_info"],
+                "parameters": {},
+                "response_type": "greeting"
+            }
+        
         else:
             return {
                 "intent": "general_query",
@@ -504,6 +527,14 @@ class IntelligentMarketingAgent:
                 response = results["compare_campaigns"]
             else:
                 response = "❌ Не удалось выполнить сравнение"
+        elif response_type == "greeting":
+            # Приветствие
+            response = "👋 Привет! Я ваш AI-помощник для анализа рекламных кампаний. Могу помочь с:\n\n"
+            response += "📊 **Отчетами по кампаниям** - 'Сделай отчет по ФРК1'\n"
+            response += "📈 **Объяснением метрик** - 'Что такое CTR?'\n"
+            response += "🏆 **Сравнением кампаний** - 'Сравни кампании'\n"
+            response += "💡 **Рекомендациями** - 'Дай рекомендации'\n\n"
+            response += "Задайте любой вопрос! 🚀"
         else:
             # Общие данные
             if "get_database_info" in results and results["get_database_info"].get("success"):
