@@ -320,9 +320,16 @@ if st.session_state.pending_campaign_select:
                     response = agent.generate_report(analysis, str(st.session_state.pending_user_question), sql_query)
                     try:
                         excel_data = agent.generate_excel_report(analysis, str(st.session_state.pending_user_question))
+                        if not excel_data or len(excel_data) == 0:
+                            print("Excel данные пустые, пробуем CSV")
+                            excel_data = agent._generate_csv_report(analysis, str(st.session_state.pending_user_question))
                     except Exception as e:
                         print(f"Ошибка генерации Excel: {e}")
-                        excel_data = None
+                        try:
+                            excel_data = agent._generate_csv_report(analysis, str(st.session_state.pending_user_question))
+                        except Exception as csv_e:
+                            print(f"Ошибка генерации CSV: {csv_e}")
+                            excel_data = None
                     # SQL запрос передается отдельно
                 else:
                     response = "❌ Ошибка: агент недоступен"
@@ -338,9 +345,16 @@ if st.session_state.pending_campaign_select:
                     response = agent.generate_report(analysis, f"Сделай отчет по кампании {selected_campaign}", sql_query)
                     try:
                         excel_data = agent.generate_excel_report(analysis, f"Сделай отчет по кампании {selected_campaign}")
+                        if not excel_data or len(excel_data) == 0:
+                            print("Excel данные пустые, пробуем CSV")
+                            excel_data = agent._generate_csv_report(analysis, f"Сделай отчет по кампании {selected_campaign}")
                     except Exception as e:
                         print(f"Ошибка генерации Excel: {e}")
-                        excel_data = None
+                        try:
+                            excel_data = agent._generate_csv_report(analysis, f"Сделай отчет по кампании {selected_campaign}")
+                        except Exception as csv_e:
+                            print(f"Ошибка генерации CSV: {csv_e}")
+                            excel_data = None
                     # SQL запрос передается отдельно
                 else:
                     response = "❌ Ошибка: агент недоступен"
