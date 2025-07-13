@@ -389,7 +389,15 @@ if st.session_state.pending_campaign_select:
                     df = agent.execute_query(sql_query)
                     analysis = agent.analyze_data(df, str(st.session_state.pending_user_question))
                     response = agent.generate_report(analysis, str(st.session_state.pending_user_question), sql_query)
-                    dashboard_data = agent.generate_dashboard_data(analysis)
+                    
+                    # Генерируем дашборд только если анализ успешен
+                    dashboard_data = None
+                    if analysis and "error" not in analysis:
+                        try:
+                            dashboard_data = agent.generate_dashboard_data(analysis)
+                        except Exception as e:
+                            print(f"Ошибка генерации дашборда: {e}")
+                            dashboard_data = None
                     try:
                         excel_data = agent.generate_excel_report(analysis, str(st.session_state.pending_user_question))
                         if not excel_data or len(excel_data) == 0:
@@ -416,7 +424,15 @@ if st.session_state.pending_campaign_select:
                     df = agent.execute_query(sql_query)
                     analysis = agent.analyze_data(df, f"Сделай отчет по кампании {selected_campaign}")
                     response = agent.generate_report(analysis, f"Сделай отчет по кампании {selected_campaign}", sql_query)
-                    dashboard_data = agent.generate_dashboard_data(analysis)
+                    
+                    # Генерируем дашборд только если анализ успешен
+                    dashboard_data = None
+                    if analysis and "error" not in analysis:
+                        try:
+                            dashboard_data = agent.generate_dashboard_data(analysis)
+                        except Exception as e:
+                            print(f"Ошибка генерации дашборда: {e}")
+                            dashboard_data = None
                     try:
                         excel_data = agent.generate_excel_report(analysis, f"Сделай отчет по кампании {selected_campaign}")
                         if not excel_data or len(excel_data) == 0:

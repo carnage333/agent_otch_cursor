@@ -1298,7 +1298,13 @@ class MarketingAnalyticsAgent:
         excel_data = self.generate_excel_report(analysis, question)
         
         # Генерируем данные для дашборда
-        dashboard_data = self.generate_dashboard_data(analysis)
+        dashboard_data = None
+        if analysis and "error" not in analysis:
+            try:
+                dashboard_data = self.generate_dashboard_data(analysis)
+            except Exception as e:
+                print(f"Ошибка генерации дашборда: {e}")
+                dashboard_data = None
         
         # Возвращаем отчет, SQL запрос, Excel данные и данные дашборда
         return report, sql_query, excel_data, dashboard_data
