@@ -453,16 +453,26 @@ if prompt := st.chat_input("Задайте вопрос о рекламных к
     # Обрабатываем вопрос через агент
     if agent:
         try:
-            response, sql_query, excel_data, dashboard_data = agent.process_question(prompt)
+            # Сначала проверяем, сколько кампаний найдено
+            matching_campaigns = agent.get_matching_campaigns(prompt)
             
-            # Добавляем ответ агента в историю
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": response,
-                "sql_query": sql_query,
-                "excel_data": excel_data,
-                "dashboard_data": dashboard_data
-            })
+            # Если найдено больше 3 кампаний, предлагаем выбор
+            if len(matching_campaigns) > 3:
+                st.session_state.pending_campaign_select = matching_campaigns
+                st.session_state.pending_user_question = prompt
+                st.rerun()
+            else:
+                # Обрабатываем вопрос как обычно
+                response, sql_query, excel_data, dashboard_data = agent.process_question(prompt)
+                
+                # Добавляем ответ агента в историю
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": response,
+                    "sql_query": sql_query,
+                    "excel_data": excel_data,
+                    "dashboard_data": dashboard_data
+                })
         except Exception as e:
             error_message = f"❌ Ошибка при обработке вопроса: {str(e)}"
             st.session_state.chat_history.append({
