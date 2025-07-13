@@ -5,9 +5,14 @@ from typing import Dict, List, Optional, Tuple
 import re
 from datetime import datetime
 import io
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils.dataframe import dataframe_to_rows
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils.dataframe import dataframe_to_rows
+    OPENPYXL_AVAILABLE = True
+except ImportError:
+    OPENPYXL_AVAILABLE = False
+    print("openpyxl недоступен, Excel отчеты будут отключены")
 
 # Пытаемся импортировать RAG систему, но не блокируем запуск если она недоступна
 try:
@@ -1295,6 +1300,10 @@ class MarketingAnalyticsAgent:
         """
         Генерация Excel отчета на основе анализа данных
         """
+        if not OPENPYXL_AVAILABLE:
+            # Возвращаем пустые данные если openpyxl недоступен
+            return b""
+        
         wb = Workbook()
         
         # Удаляем дефолтный лист

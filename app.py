@@ -238,13 +238,15 @@ with chat_container:
                 st.markdown(message["content"])
                 
                 # Кнопка скачивания Excel
-                if "excel_data" in message and message["excel_data"]:
+                if "excel_data" in message and message["excel_data"] and len(message["excel_data"]) > 0:
                     st.download_button(
                         label="📊 Скачать Excel отчет",
                         data=message["excel_data"],
                         file_name=f"отчет_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
+                elif "excel_data" in message and (not message["excel_data"] or len(message["excel_data"]) == 0):
+                    st.info("📊 Excel отчет недоступен (требуется библиотека openpyxl)")
                 
                 if "sql_query" in message and message["sql_query"]:
                     with st.expander("🔍 Показать SQL запрос", expanded=False):
@@ -299,7 +301,11 @@ if st.session_state.pending_campaign_select:
                     df = agent.execute_query(sql_query)
                     analysis = agent.analyze_data(df, str(st.session_state.pending_user_question))
                     response = agent.generate_report(analysis, str(st.session_state.pending_user_question), sql_query)
-                    excel_data = agent.generate_excel_report(analysis, str(st.session_state.pending_user_question))
+                    try:
+                        excel_data = agent.generate_excel_report(analysis, str(st.session_state.pending_user_question))
+                    except Exception as e:
+                        print(f"Ошибка генерации Excel: {e}")
+                        excel_data = None
                     # SQL запрос передается отдельно
                 else:
                     response = "❌ Ошибка: агент недоступен"
@@ -312,7 +318,11 @@ if st.session_state.pending_campaign_select:
                     df = agent.execute_query(sql_query)
                     analysis = agent.analyze_data(df, f"Сделай отчет по кампании {selected_campaign}")
                     response = agent.generate_report(analysis, f"Сделай отчет по кампании {selected_campaign}", sql_query)
-                    excel_data = agent.generate_excel_report(analysis, f"Сделай отчет по кампании {selected_campaign}")
+                    try:
+                        excel_data = agent.generate_excel_report(analysis, f"Сделай отчет по кампании {selected_campaign}")
+                    except Exception as e:
+                        print(f"Ошибка генерации Excel: {e}")
+                        excel_data = None
                     # SQL запрос передается отдельно
                 else:
                     response = "❌ Ошибка: агент недоступен"
