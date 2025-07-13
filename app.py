@@ -255,8 +255,8 @@ with chat_container:
                     mime_type = "text/csv"
                     button_label = "📊 Скачать CSV отчет"
                     
-                    # Создаем уникальный ключ для каждой кнопки
-                    button_key = f"download_{len(st.session_state.chat_history)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    # Создаем уникальный ключ для каждой кнопки используя индекс сообщения
+                    button_key = f"download_{i}_{len(st.session_state.chat_history)}"
                     
                     st.download_button(
                         label=button_label,
