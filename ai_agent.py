@@ -500,6 +500,10 @@ class MarketingAnalyticsAgent:
             }
         else:
             # Детальная статистика по кампаниям
+            if 'campaign_name' in df.columns:
+                unique_campaigns_count = df['campaign_name'].nunique()
+            else:
+                unique_campaigns_count = len(df)
             summary = {
                 "analysis_type": analysis_type,
                 "total_impressions": df['impressions'].sum(),
@@ -508,7 +512,7 @@ class MarketingAnalyticsAgent:
                 "total_visits": df['visits'].sum(),
                 "avg_ctr": round((df['clicks'].sum() / df['impressions'].sum()) * 100, 2) if df['impressions'].sum() > 0 else 0,
                 "avg_cpc": round(df['cost'].sum() / df['clicks'].sum(), 2) if df['clicks'].sum() > 0 else 0,
-                "campaigns_count": len(df)
+                "campaigns_count": unique_campaigns_count
             }
             
             # Добавляем данные по кампаниям
