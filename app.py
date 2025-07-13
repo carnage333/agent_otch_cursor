@@ -1,10 +1,26 @@
 import streamlit as st
 import pandas as pd
-from ai_agent import MarketingAnalyticsAgent
+import sqlite3
+import io
+from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
-import sqlite3
+from plotly.subplots import make_subplots
+
+# Импортируем нового интеллектуального агента
+try:
+    from intelligent_agent import IntelligentMarketingAgent
+    agent = IntelligentMarketingAgent()
+    AGENT_AVAILABLE = True
+except ImportError:
+    # Fallback к старому агенту
+    try:
+        from ai_agent import MarketingAnalyticsAgent
+        agent = MarketingAnalyticsAgent()
+        AGENT_AVAILABLE = True
+    except ImportError:
+        AGENT_AVAILABLE = False
+        st.error("❌ Ошибка загрузки агента")
 
 # CSV отчеты всегда доступны
 
@@ -193,18 +209,18 @@ import init_db
 init_db.init_database()
 
 # Инициализация агента
-@st.cache_resource
-def get_agent():
-    try:
-        return MarketingAnalyticsAgent()
-    except Exception as e:
-        st.error(f"Ошибка инициализации агента: {e}")
-        return None
+# @st.cache_resource
+# def get_agent():
+#     try:
+#         return MarketingAnalyticsAgent()
+#     except Exception as e:
+#         st.error(f"Ошибка инициализации агента: {e}")
+#         return None
 
-agent = get_agent()
+# agent = get_agent()
 
 # Проверяем, что агент инициализирован
-if agent is None:
+if not AGENT_AVAILABLE:
     st.error("Не удалось инициализировать агент. Приложение не может работать.")
     st.stop()
 
@@ -375,24 +391,11 @@ if st.session_state.pending_campaign_select:
                 ORDER BY "Название кампании" ASC
                 """
                 if agent:
-                    df = agent.execute_query(sql_query)
-                    analysis = agent.analyze_data(df, str(st.session_state.pending_user_question))
-                    response = agent.generate_report(analysis, str(st.session_state.pending_user_question), sql_query)
-                    
-                    # Генерируем дашборд только если анализ успешен
-                    dashboard_data = None
-                    if analysis and "error" not in analysis:
-                        try:
-                            dashboard_data = agent.generate_dashboard_data(analysis)
-                        except Exception as e:
-                            print(f"Ошибка генерации дашборда: {e}")
-                            dashboard_data = None
-                    try:
-                        excel_data = agent.generate_csv_report(analysis, str(st.session_state.pending_user_question))
-                        print(f"CSV данные сгенерированы, длина: {len(excel_data) if excel_data else 0}")
-                    except Exception as e:
-                        print(f"Ошибка генерации CSV: {e}")
-                        excel_data = None
+                    # Используем новый интеллектуальный агент
+                    response = agent.process_question(str(st.session_state.pending_user_question))
+                    sql_query = ""  # Новый агент не возвращает SQL отдельно
+                    excel_data = None  # Новый агент не генерирует CSV
+                    dashboard_data = None  # Новый агент не генерирует дашборд
                     # SQL запрос передается отдельно
                 else:
                     response = "❌ Ошибка: агент недоступен"
@@ -404,24 +407,11 @@ if st.session_state.pending_campaign_select:
                 # Используем LIKE для более гибкого поиска
                 sql_query = f"SELECT \"Название кампании\" as campaign_name, \"Площадка\" as platform, SUM(\"Показы\") as impressions, SUM(\"Клики\") as clicks, SUM(\"Расход до НДС\") as cost, SUM(\"Визиты\") as visits, ROUND(SUM(\"Клики\") * 100.0 / SUM(\"Показы\"), 2) as ctr, ROUND(SUM(\"Расход до НДС\") / SUM(\"Клики\"), 2) as cpc FROM campaign_metrics WHERE \"Название кампании\" LIKE '%{selected_campaign}%' GROUP BY \"Название кампании\", \"Площадка\" ORDER BY \"Название кампании\" ASC"
                 if agent:
-                    df = agent.execute_query(sql_query)
-                    analysis = agent.analyze_data(df, f"Сделай отчет по кампании {selected_campaign}")
-                    response = agent.generate_report(analysis, f"Сделай отчет по кампании {selected_campaign}", sql_query)
-                    
-                    # Генерируем дашборд только если анализ успешен
-                    dashboard_data = None
-                    if analysis and "error" not in analysis:
-                        try:
-                            dashboard_data = agent.generate_dashboard_data(analysis)
-                        except Exception as e:
-                            print(f"Ошибка генерации дашборда: {e}")
-                            dashboard_data = None
-                    try:
-                        excel_data = agent.generate_csv_report(analysis, f"Сделай отчет по кампании {selected_campaign}")
-                        print(f"CSV данные сгенерированы, длина: {len(excel_data) if excel_data else 0}")
-                    except Exception as e:
-                        print(f"Ошибка генерации CSV: {e}")
-                        excel_data = None
+                    # Используем новый интеллектуальный агент
+                    response = agent.process_question(f"Сделай отчет по кампании {selected_campaign}")
+                    sql_query = ""  # Новый агент не возвращает SQL отдельно
+                    excel_data = None  # Новый агент не генерирует CSV
+                    dashboard_data = None  # Новый агент не генерирует дашборд
                     # SQL запрос передается отдельно
                 else:
                     response = "❌ Ошибка: агент недоступен"
@@ -468,7 +458,16 @@ if user_question and st.session_state.pending_campaign_select:
 # --- Новая логика выбора кампании ---
 if user_question and not st.session_state.pending_campaign_select:
     if agent:
-        matching_campaigns = agent.get_matching_campaigns(user_question)
+        # Новый агент не имеет метода get_matching_campaigns, используем прямой обработчик
+        matching_campaigns = []
+        try:
+            # Пробуем обработать вопрос напрямую
+            response = agent.process_question(user_question)
+            # Если ответ не содержит ошибку, значит кампания найдена
+            if "❌" not in response and "не найдено" not in response.lower():
+                matching_campaigns = ["Кампания найдена"]
+        except:
+            matching_campaigns = []
         if len(matching_campaigns) > 1:
             st.session_state.pending_campaign_select = matching_campaigns
             st.session_state.pending_user_question = user_question
