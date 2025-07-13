@@ -398,7 +398,7 @@ class IntelligentMarketingAgent:
         
         return "## 🎯 Рекомендации по оптимизации\n\n" + "\n".join(recommendations)
     
-    def process_question(self, user_question: str) -> str:
+    def process_question(self, user_question: str) -> tuple:
         """Основной метод обработки вопроса пользователя"""
         print(f"🤖 Обрабатываю вопрос: {user_question}")
         
@@ -434,31 +434,31 @@ class IntelligentMarketingAgent:
             if "get_campaign_data" in results and results["get_campaign_data"].get("success"):
                 data = results["get_campaign_data"]["data"]
                 analysis = self.analyze_metrics(data)
-                return self.generate_report(analysis, user_question)
+                response = self.generate_report(analysis, user_question)
             else:
-                return "❌ Не удалось найти данные для отчета"
-        
+                response = "❌ Не удалось найти данные для отчета"
         elif response_type == "explanation":
             # Объяснение
             if "explain_metric" in results:
-                return results["explain_metric"]
+                response = results["explain_metric"]
             else:
-                return "❌ Не удалось найти объяснение"
-        
+                response = "❌ Не удалось найти объяснение"
         elif response_type == "comparison":
             # Сравнение
             if "compare_campaigns" in results:
-                return results["compare_campaigns"]
+                response = results["compare_campaigns"]
             else:
-                return "❌ Не удалось выполнить сравнение"
-        
+                response = "❌ Не удалось выполнить сравнение"
         else:
             # Общие данные
             if "get_database_info" in results and results["get_database_info"].get("success"):
                 info = results["get_database_info"]
-                return f"📊 **Информация о базе данных:**\n\n- Всего записей: {info['total_records']:,}\n- Примеры кампаний: {', '.join(info['sample_campaigns'])}\n- Доступные данные: {info['available_data']}"
+                response = f"📊 **Информация о базе данных:**\n\n- Всего записей: {info['total_records']:,}\n- Примеры кампаний: {', '.join(info['sample_campaigns'])}\n- Доступные данные: {info['available_data']}"
             else:
-                return "❌ Не удалось получить информацию"
+                response = "❌ Не удалось получить информацию"
+        
+        # Возвращаем кортеж в формате (response, sql_query, excel_data, dashboard_data)
+        return response, "", None, None
 
 # Пример использования
 if __name__ == "__main__":
