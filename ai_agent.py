@@ -1305,8 +1305,8 @@ class MarketingAnalyticsAgent:
         Генерация Excel отчета на основе анализа данных
         """
         if not OPENPYXL_AVAILABLE:
-            # Возвращаем пустые данные если openpyxl недоступен
-            return b""
+            # Создаем CSV отчет как альтернативу Excel
+            return self._generate_csv_report(analysis, question)
         
         wb = Workbook()
         
@@ -1460,6 +1460,79 @@ class MarketingAnalyticsAgent:
         excel_buffer.seek(0)
         
         return excel_buffer.getvalue()
+    
+    def _generate_csv_report(self, analysis: Dict, question: str) -> bytes:
+        """
+        Генерация CSV отчета как альтернатива Excel
+        """
+        import pandas as pd
+        
+        # Создаем список строк для CSV
+        csv_lines = []
+        
+        # Заголовок
+        csv_lines.append(f"Отчет по запросу: {question}")
+        csv_lines.append("")
+        
+        # Общая статистика
+        summary = analysis.get("summary", {})
+        csv_lines.append("ОБЩАЯ СТАТИСТИКА")
+        csv_lines.append("Показатель,Значение")
+        csv_lines.append(f"Всего кампаний,{summary.get('campaigns_count', 0)}")
+        csv_lines.append(f"Общие показы,{summary.get('total_impressions', 0):,}")
+        csv_lines.append(f"Общие клики,{summary.get('total_clicks', 0):,}")
+        csv_lines.append(f"Общий расход (₽),{summary.get('total_cost', 0):,.2f}")
+        csv_lines.append(f"Общие визиты,{summary.get('total_visits', 0):,}")
+        csv_lines.append(f"Средний CTR (%),{summary.get('avg_ctr', 0):.2f}")
+        csv_lines.append(f"Средний CPC (₽),{summary.get('avg_cpc', 0):.2f}")
+        csv_lines.append("")
+        
+        # Детальная статистика по кампаниям
+        if "campaigns" in summary and summary["campaigns"]:
+            csv_lines.append("ДЕТАЛЬНАЯ СТАТИСТИКА ПО КАМПАНИЯМ")
+            csv_lines.append("Кампания,Площадка,Показы,Клики,Расход (₽),Визиты,CTR (%),CPC (₽)")
+            
+            for campaign in summary["campaigns"]:
+                csv_lines.append(f"\"{campaign.get('campaign_name', '—')}\","
+                               f"\"{campaign.get('platform', '—')}\","
+                               f"{campaign.get('impressions', 0):,},"
+                               f"{campaign.get('clicks', 0):,},"
+                               f"{campaign.get('cost', 0):,.2f},"
+                               f"{campaign.get('visits', 0):,},"
+                               f"{campaign.get('ctr', 0):.2f},"
+                               f"{campaign.get('cpc', 0):.2f}")
+            csv_lines.append("")
+        
+        # Анализ по площадкам
+        if "platforms" in summary and summary["platforms"]:
+            csv_lines.append("АНАЛИЗ ПО ПЛОЩАДКАМ")
+            csv_lines.append("Площадка,Показы,Клики,Расход (₽),Визиты,CTR (%),CPC (₽)")
+            
+            for platform in summary["platforms"]:
+                csv_lines.append(f"\"{platform.get('platform', '—')}\","
+                               f"{platform.get('impressions', 0):,},"
+                               f"{platform.get('clicks', 0):,},"
+                               f"{platform.get('cost', 0):,.2f},"
+                               f"{platform.get('visits', 0):,},"
+                               f"{platform.get('ctr', 0):.2f},"
+                               f"{platform.get('cpc', 0):.2f}")
+            csv_lines.append("")
+        
+        # Инсайты и рекомендации
+        if analysis.get("insights"):
+            csv_lines.append("КЛЮЧЕВЫЕ ИНСАЙТЫ")
+            for insight in analysis["insights"]:
+                csv_lines.append(f"• {insight}")
+            csv_lines.append("")
+        
+        if analysis.get("recommendations"):
+            csv_lines.append("РЕКОМЕНДАЦИИ")
+            for rec in analysis["recommendations"]:
+                csv_lines.append(f"• {rec}")
+        
+        # Объединяем строки и конвертируем в bytes
+        csv_content = "\n".join(csv_lines)
+        return csv_content.encode('utf-8-sig')  # UTF-8 с BOM для корректного отображения в Excel
     
     def get_conversation_history(self) -> List[Dict]:
         """Получение истории диалога"""

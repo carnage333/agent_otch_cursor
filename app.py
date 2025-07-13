@@ -6,6 +6,13 @@ import plotly.graph_objects as go
 from datetime import datetime
 import sqlite3
 
+# Проверяем доступность openpyxl
+try:
+    import openpyxl
+    OPENPYXL_AVAILABLE = True
+except ImportError:
+    OPENPYXL_AVAILABLE = False
+
 # Настройка страницы с улучшенным дизайном
 st.set_page_config(
     page_title="AI-агент отчетности | Маркетинг",
@@ -237,16 +244,26 @@ with chat_container:
             with st.chat_message("assistant"):
                 st.markdown(message["content"])
                 
-                # Кнопка скачивания Excel
+                # Кнопка скачивания отчета
                 if "excel_data" in message and message["excel_data"] and len(message["excel_data"]) > 0:
+                    # Определяем тип файла на основе доступности openpyxl
+                    if OPENPYXL_AVAILABLE:
+                        file_name = f"отчет_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                        mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        button_label = "📊 Скачать Excel отчет"
+                    else:
+                        file_name = f"отчет_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                        mime_type = "text/csv"
+                        button_label = "📊 Скачать CSV отчет"
+                    
                     st.download_button(
-                        label="📊 Скачать Excel отчет",
+                        label=button_label,
                         data=message["excel_data"],
-                        file_name=f"отчет_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        file_name=file_name,
+                        mime=mime_type
                     )
                 elif "excel_data" in message and (not message["excel_data"] or len(message["excel_data"]) == 0):
-                    st.info("📊 Excel отчет недоступен (требуется библиотека openpyxl)")
+                    st.info("📊 Отчет недоступен")
                 
                 if "sql_query" in message and message["sql_query"]:
                     with st.expander("🔍 Показать SQL запрос", expanded=False):
