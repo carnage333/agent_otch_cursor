@@ -343,8 +343,6 @@ with chat_container:
                                     st.plotly_chart(fig_performance, use_container_width=True)
                                 else:
                                     st.warning("⚠️ Недостаточно данных для построения графика")
-                                fig_performance.update_layout(height=400)
-                                st.plotly_chart(fig_performance, use_container_width=True)
                 
                 if "sql_query" in message and message["sql_query"]:
                     with st.expander("🔍 Показать SQL запрос", expanded=False):
@@ -406,10 +404,10 @@ if st.session_state.pending_campaign_select:
                     dashboard_data = None
             else:
                 # Формируем SQL запрос только для выбранной кампании
-                # Используем LIKE для более гибкого поиска
-                sql_query = f"SELECT \"Название кампании\" as campaign_name, \"Площадка\" as platform, SUM(\"Показы\") as impressions, SUM(\"Клики\") as clicks, SUM(\"Расход до НДС\") as cost, SUM(\"Визиты\") as visits, ROUND(SUM(\"Клики\") * 100.0 / SUM(\"Показы\"), 2) as ctr, ROUND(SUM(\"Расход до НДС\") / SUM(\"Клики\"), 2) as cpc FROM campaign_metrics WHERE \"Название кампании\" LIKE '%{selected_campaign}%' GROUP BY \"Название кампании\", \"Площадка\" ORDER BY \"Название кампании\" ASC"
+                # Используем точное совпадение для выбранной кампании
+                sql_query = f"SELECT \"Название кампании\" as campaign_name, \"Площадка\" as platform, SUM(\"Показы\") as impressions, SUM(\"Клики\") as clicks, SUM(\"Расход до НДС\") as cost, SUM(\"Визиты\") as visits, ROUND(SUM(\"Клики\") * 100.0 / SUM(\"Показы\"), 2) as ctr, ROUND(SUM(\"Расход до НДС\") / SUM(\"Клики\"), 2) as cpc FROM campaign_metrics WHERE \"Название кампании\" = '{selected_campaign}' GROUP BY \"Название кампании\", \"Площадка\" ORDER BY \"Название кампании\" ASC"
                 if agent:
-                    # Используем старый рабочий агент
+                    # Используем старый рабочий агент с точным названием кампании
                     response, sql_query, excel_data, dashboard_data = agent.process_question(f"Сделай отчет по кампании {selected_campaign}")
                     # SQL запрос передается отдельно
                 else:
