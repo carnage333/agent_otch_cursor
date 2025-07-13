@@ -1289,11 +1289,15 @@ class MarketingAnalyticsAgent:
         # 2. Пользователь явно спрашивает о терминах/метриках
         should_use_rag = not has_data or is_asking_about_terms
         
-        if should_use_rag:
-            # Улучшаем отчет с помощью RAG системы
-            enhanced_report = self.rag_system.enhance_report(report, question)
-            if enhanced_report != report:
-                report = enhanced_report
+        if should_use_rag and self.rag_system is not None:
+            try:
+                # Улучшаем отчет с помощью RAG системы
+                enhanced_report = self.rag_system.enhance_report(report, question)
+                if enhanced_report != report:
+                    report = enhanced_report
+            except Exception as e:
+                # Если RAG система недоступна, используем базовый отчет
+                pass
         
         # Сохраняем в историю
         self.conversation_history.append({
@@ -1397,13 +1401,13 @@ class MarketingAnalyticsAgent:
                 sql = f"""
                 SELECT 
                     'Воронка конверсии' as metric,
-                    COUNT(DISTINCT visit_id) as visits,
+                    COUNT(DISTINCT visitID) as visits,
                     SUM(submits) as submits,
                     SUM(account_num) as accounts_opened,
                     SUM(created_flag) as created,
                     SUM(call_answered_flag) as calls_answered,
                     SUM(quality_flag) as quality_leads,
-                    ROUND(SUM(submits) * 100.0 / COUNT(DISTINCT visit_id), 2) as conversion_to_submits,
+                    ROUND(SUM(submits) * 100.0 / COUNT(DISTINCT visitID), 2) as conversion_to_submits,
                     ROUND(SUM(account_num) * 100.0 / SUM(submits), 2) as conversion_to_accounts,
                     ROUND(SUM(quality_flag) * 100.0 / SUM(account_num), 2) as conversion_to_quality
                 FROM funnel_data 
