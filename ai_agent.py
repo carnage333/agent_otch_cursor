@@ -5,14 +5,6 @@ from typing import Dict, List, Optional, Tuple
 import re
 from datetime import datetime
 import io
-try:
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    from openpyxl.utils.dataframe import dataframe_to_rows
-    OPENPYXL_AVAILABLE = True
-except ImportError:
-    OPENPYXL_AVAILABLE = False
-    print("openpyxl недоступен, Excel отчеты будут отключены")
 
 # Пытаемся импортировать RAG систему, но не блокируем запуск если она недоступна
 try:
@@ -1294,8 +1286,8 @@ class MarketingAnalyticsAgent:
             "timestamp": datetime.now().isoformat()
         })
         
-        # Генерируем Excel отчет
-        excel_data = self.generate_excel_report(analysis, question)
+        # Генерируем CSV отчет
+        excel_data = self.generate_csv_report(analysis, question)
         
         # Генерируем данные для дашборда
         dashboard_data = None
@@ -1309,184 +1301,86 @@ class MarketingAnalyticsAgent:
         # Возвращаем отчет, SQL запрос, Excel данные и данные дашборда
         return report, sql_query, excel_data, dashboard_data
     
-    def generate_excel_report(self, analysis: Dict, question: str) -> bytes:
+    def generate_csv_report(self, analysis: Dict, question: str) -> bytes:
         """
-        Генерация Excel отчета на основе анализа данных
+        Генерация CSV отчета на основе анализа данных
         """
         # Проверяем, есть ли данные для анализа
         if not analysis or "error" in analysis:
-            # Если нет данных, создаем простой отчет с сообщением
-            if not OPENPYXL_AVAILABLE:
-                return self._generate_csv_report(analysis, question)
-            
-            wb = Workbook()
-            wb.remove(wb.active)
-            sheet = wb.create_sheet("Отчет")
-            sheet['A1'] = f"Отчет по запросу: {question}"
-            sheet['A1'].font = Font(bold=True, size=14)
-            sheet['A3'] = "Нет данных для анализа по вашему запросу."
-            
-            excel_buffer = io.BytesIO()
-            wb.save(excel_buffer)
-            excel_buffer.seek(0)
-            return excel_buffer.getvalue()
+            # Если нет данных, создаем простой CSV с сообщением
+            csv_content = f"Отчет по запросу: {question}\n\nНет данных для анализа по вашему запросу."
+            return csv_content.encode('utf-8')
         
-        if not OPENPYXL_AVAILABLE:
-            # Создаем CSV отчет как альтернативу Excel
-            return self._generate_csv_report(analysis, question)
-        
-        wb = Workbook()
-        
-        # Удаляем дефолтный лист
-        wb.remove(wb.active)
-        
-        # Создаем лист с общей статистикой
-        summary_sheet = wb.create_sheet("Общая статистика")
-        summary = analysis.get("summary", {})
+        # Создаем CSV отчет
+        csv_parts = []
         
         # Заголовок
-        summary_sheet['A1'] = f"Отчет по запросу: {question}"
-        summary_sheet['A1'].font = Font(bold=True, size=14)
-        summary_sheet.merge_cells('A1:D1')
+        csv_parts.append(f"Отчет по запросу: {question}")
+        csv_parts.append("")
         
         # Общая статистика
-        row = 3
-        summary_sheet[f'A{row}'] = "Всего кампаний"
-        summary_sheet[f'B{row}'] = summary.get('campaigns_count', 0)
-        row += 1
+        summary = analysis.get("summary", {})
+        if summary:
+            csv_parts.append("ОБЩАЯ СТАТИСТИКА")
+            csv_parts.append("Показатель,Значение")
+            csv_parts.append(f"Всего кампаний,{summary.get('campaigns_count', 0)}")
+            csv_parts.append(f"Общие показы,{summary.get('total_impressions', 0)}")
+            csv_parts.append(f"Общие клики,{summary.get('total_clicks', 0)}")
+            csv_parts.append(f"Общий расход (₽),{summary.get('total_cost', 0)}")
+            csv_parts.append(f"Общие визиты,{summary.get('total_visits', 0)}")
+            csv_parts.append(f"Средний CTR (%),{summary.get('avg_ctr', 0)}")
+            csv_parts.append(f"Средний CPC (₽),{summary.get('avg_cpc', 0)}")
+            csv_parts.append("")
         
-        summary_sheet[f'A{row}'] = "Общие показы"
-        summary_sheet[f'B{row}'] = summary.get('total_impressions', 0)
-        row += 1
-        
-        summary_sheet[f'A{row}'] = "Общие клики"
-        summary_sheet[f'B{row}'] = summary.get('total_clicks', 0)
-        row += 1
-        
-        summary_sheet[f'A{row}'] = "Общий расход (₽)"
-        summary_sheet[f'B{row}'] = summary.get('total_cost', 0)
-        row += 1
-        
-        summary_sheet[f'A{row}'] = "Общие визиты"
-        summary_sheet[f'B{row}'] = summary.get('total_visits', 0)
-        row += 1
-        
-        summary_sheet[f'A{row}'] = "Средний CTR (%)"
-        summary_sheet[f'B{row}'] = summary.get('avg_ctr', 0)
-        row += 1
-        
-        summary_sheet[f'A{row}'] = "Средний CPC (₽)"
-        summary_sheet[f'B{row}'] = summary.get('avg_cpc', 0)
-        
-        # Стили для заголовков
-        header_font = Font(bold=True)
-        header_fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
-        
-        for cell in summary_sheet['A3:A9']:
-            cell.font = header_font
-            cell.fill = header_fill
-        
-        # Создаем лист с детальной статистикой по кампаниям
+        # Детальная статистика по кампаниям
         if "campaigns" in summary and summary["campaigns"]:
-            campaigns_sheet = wb.create_sheet("Детальная статистика")
+            csv_parts.append("ДЕТАЛЬНАЯ СТАТИСТИКА ПО КАМПАНИЯМ")
+            csv_parts.append("Кампания,Площадка,Показы,Клики,Расход (₽),Визиты,CTR (%),CPC (₽)")
             
-            # Заголовки
-            headers = ["Кампания", "Площадка", "Показы", "Клики", "Расход (₽)", "Визиты", "CTR (%)", "CPC (₽)"]
-            for col, header in enumerate(headers, 1):
-                cell = campaigns_sheet.cell(row=1, column=col)
-                cell.value = header
-                cell.font = header_font
-                cell.fill = header_fill
-            
-            # Данные
-            for row_idx, campaign in enumerate(summary["campaigns"], 2):
-                campaigns_sheet.cell(row=row_idx, column=1, value=campaign.get('campaign_name', '—'))
-                campaigns_sheet.cell(row=row_idx, column=2, value=campaign.get('platform', '—'))
-                campaigns_sheet.cell(row=row_idx, column=3, value=campaign.get('impressions', 0))
-                campaigns_sheet.cell(row=row_idx, column=4, value=campaign.get('clicks', 0))
-                campaigns_sheet.cell(row=row_idx, column=5, value=campaign.get('cost', 0))
-                campaigns_sheet.cell(row=row_idx, column=6, value=campaign.get('visits', 0))
-                campaigns_sheet.cell(row=row_idx, column=7, value=campaign.get('ctr', 0))
-                campaigns_sheet.cell(row=row_idx, column=8, value=campaign.get('cpc', 0))
-            
-            # Автоподбор ширины столбцов
-            for column in campaigns_sheet.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
-                for cell in column:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = min(max_length + 2, 50)
-                campaigns_sheet.column_dimensions[column_letter].width = adjusted_width
+            for campaign in summary["campaigns"]:
+                campaign_name = campaign.get('campaign_name', '—').replace(',', ';')
+                platform = campaign.get('platform', '—').replace(',', ';')
+                impressions = campaign.get('impressions', 0)
+                clicks = campaign.get('clicks', 0)
+                cost = campaign.get('cost', 0)
+                visits = campaign.get('visits', 0)
+                ctr = campaign.get('ctr', 0)
+                cpc = campaign.get('cpc', 0)
+                
+                csv_parts.append(f"{campaign_name},{platform},{impressions},{clicks},{cost},{visits},{ctr},{cpc}")
+            csv_parts.append("")
         
-        # Создаем лист с анализом по площадкам
+        # Анализ по площадкам
         if "platforms" in summary and summary["platforms"]:
-            platforms_sheet = wb.create_sheet("Анализ по площадкам")
+            csv_parts.append("АНАЛИЗ ПО ПЛОЩАДКАМ")
+            csv_parts.append("Площадка,Показы,Клики,Расход (₽),Визиты,CTR (%),CPC (₽)")
             
-            # Заголовки
-            headers = ["Площадка", "Показы", "Клики", "Расход (₽)", "Визиты", "CTR (%)", "CPC (₽)"]
-            for col, header in enumerate(headers, 1):
-                cell = platforms_sheet.cell(row=1, column=col)
-                cell.value = header
-                cell.font = header_font
-                cell.fill = header_fill
-            
-            # Данные
-            for row_idx, platform in enumerate(summary["platforms"], 2):
-                platforms_sheet.cell(row=row_idx, column=1, value=platform.get('platform', '—'))
-                platforms_sheet.cell(row=row_idx, column=2, value=platform.get('impressions', 0))
-                platforms_sheet.cell(row=row_idx, column=3, value=platform.get('clicks', 0))
-                platforms_sheet.cell(row=row_idx, column=4, value=platform.get('cost', 0))
-                platforms_sheet.cell(row=row_idx, column=5, value=platform.get('visits', 0))
-                platforms_sheet.cell(row=row_idx, column=6, value=platform.get('ctr', 0))
-                platforms_sheet.cell(row=row_idx, column=7, value=platform.get('cpc', 0))
-            
-            # Автоподбор ширины столбцов
-            for column in platforms_sheet.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
-                for cell in column:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = min(max_length + 2, 50)
-                platforms_sheet.column_dimensions[column_letter].width = adjusted_width
-        
-        # Создаем лист с инсайтами и рекомендациями
-        insights_sheet = wb.create_sheet("Инсайты и рекомендации")
+            for platform in summary["platforms"]:
+                platform_name = platform.get('platform', '—').replace(',', ';')
+                impressions = platform.get('impressions', 0)
+                clicks = platform.get('clicks', 0)
+                cost = platform.get('cost', 0)
+                visits = platform.get('visits', 0)
+                ctr = platform.get('ctr', 0)
+                cpc = platform.get('cpc', 0)
+                
+                csv_parts.append(f"{platform_name},{impressions},{clicks},{cost},{visits},{ctr},{cpc}")
+            csv_parts.append("")
         
         # Инсайты
-        insights_sheet['A1'] = "Ключевые инсайты"
-        insights_sheet['A1'].font = Font(bold=True, size=12)
-        
-        row = 3
         if analysis.get("insights"):
+            csv_parts.append("КЛЮЧЕВЫЕ ИНСАЙТЫ")
             for insight in analysis["insights"]:
-                insights_sheet[f'A{row}'] = f"• {insight}"
-                row += 1
+                csv_parts.append(f"• {insight}")
+            csv_parts.append("")
         
         # Рекомендации
-        row += 1
-        insights_sheet[f'A{row}'] = "Рекомендации"
-        insights_sheet[f'A{row}'].font = Font(bold=True, size=12)
-        
-        row += 2
         if analysis.get("recommendations"):
+            csv_parts.append("РЕКОМЕНДАЦИИ")
             for rec in analysis["recommendations"]:
-                insights_sheet[f'A{row}'] = f"• {rec}"
-                row += 1
+                csv_parts.append(f"• {rec}")
         
-        # Сохраняем в bytes
-        excel_buffer = io.BytesIO()
-        wb.save(excel_buffer)
-        excel_buffer.seek(0)
-        
-        return excel_buffer.getvalue()
+        return "\n".join(csv_parts).encode('utf-8')
     
     def generate_dashboard_data(self, analysis: Dict) -> Dict:
         """
@@ -1567,78 +1461,7 @@ class MarketingAnalyticsAgent:
         
         return dashboard_data
     
-    def _generate_csv_report(self, analysis: Dict, question: str) -> bytes:
-        """
-        Генерация CSV отчета как альтернатива Excel
-        """
-        import pandas as pd
-        
-        # Создаем список строк для CSV
-        csv_lines = []
-        
-        # Заголовок
-        csv_lines.append(f"Отчет по запросу: {question}")
-        csv_lines.append("")
-        
-        # Общая статистика
-        summary = analysis.get("summary", {})
-        csv_lines.append("ОБЩАЯ СТАТИСТИКА")
-        csv_lines.append("Показатель,Значение")
-        csv_lines.append(f"Всего кампаний,{summary.get('campaigns_count', 0)}")
-        csv_lines.append(f"Общие показы,{summary.get('total_impressions', 0):,}")
-        csv_lines.append(f"Общие клики,{summary.get('total_clicks', 0):,}")
-        csv_lines.append(f"Общий расход (₽),{summary.get('total_cost', 0):,.2f}")
-        csv_lines.append(f"Общие визиты,{summary.get('total_visits', 0):,}")
-        csv_lines.append(f"Средний CTR (%),{summary.get('avg_ctr', 0):.2f}")
-        csv_lines.append(f"Средний CPC (₽),{summary.get('avg_cpc', 0):.2f}")
-        csv_lines.append("")
-        
-        # Детальная статистика по кампаниям
-        if "campaigns" in summary and summary["campaigns"]:
-            csv_lines.append("ДЕТАЛЬНАЯ СТАТИСТИКА ПО КАМПАНИЯМ")
-            csv_lines.append("Кампания,Площадка,Показы,Клики,Расход (₽),Визиты,CTR (%),CPC (₽)")
-            
-            for campaign in summary["campaigns"]:
-                csv_lines.append(f"\"{campaign.get('campaign_name', '—')}\","
-                               f"\"{campaign.get('platform', '—')}\","
-                               f"{campaign.get('impressions', 0):,},"
-                               f"{campaign.get('clicks', 0):,},"
-                               f"{campaign.get('cost', 0):,.2f},"
-                               f"{campaign.get('visits', 0):,},"
-                               f"{campaign.get('ctr', 0):.2f},"
-                               f"{campaign.get('cpc', 0):.2f}")
-            csv_lines.append("")
-        
-        # Анализ по площадкам
-        if "platforms" in summary and summary["platforms"]:
-            csv_lines.append("АНАЛИЗ ПО ПЛОЩАДКАМ")
-            csv_lines.append("Площадка,Показы,Клики,Расход (₽),Визиты,CTR (%),CPC (₽)")
-            
-            for platform in summary["platforms"]:
-                csv_lines.append(f"\"{platform.get('platform', '—')}\","
-                               f"{platform.get('impressions', 0):,},"
-                               f"{platform.get('clicks', 0):,},"
-                               f"{platform.get('cost', 0):,.2f},"
-                               f"{platform.get('visits', 0):,},"
-                               f"{platform.get('ctr', 0):.2f},"
-                               f"{platform.get('cpc', 0):.2f}")
-            csv_lines.append("")
-        
-        # Инсайты и рекомендации
-        if analysis.get("insights"):
-            csv_lines.append("КЛЮЧЕВЫЕ ИНСАЙТЫ")
-            for insight in analysis["insights"]:
-                csv_lines.append(f"• {insight}")
-            csv_lines.append("")
-        
-        if analysis.get("recommendations"):
-            csv_lines.append("РЕКОМЕНДАЦИИ")
-            for rec in analysis["recommendations"]:
-                csv_lines.append(f"• {rec}")
-        
-        # Объединяем строки и конвертируем в bytes
-        csv_content = "\n".join(csv_lines)
-        return csv_content.encode('utf-8-sig')  # UTF-8 с BOM для корректного отображения в Excel
+
     
     def get_conversation_history(self) -> List[Dict]:
         """Получение истории диалога"""
