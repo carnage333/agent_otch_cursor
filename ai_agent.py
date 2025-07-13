@@ -152,6 +152,32 @@ class MarketingAnalyticsAgent:
         # Нормализуем вопрос
         question_upper = question.upper()
         
+        # Сначала проверяем основные ключевые слова (ФРК4, ФРК1 и т.д.)
+        main_keywords = ["ФРК4", "ФРК1", "ФРК2", "ФРК3"]
+        found_main_keywords = []
+        
+        for keyword in main_keywords:
+            if keyword in question_upper:
+                found_main_keywords.append(keyword)
+        
+        # Если нашли основные ключевые слова, используем их как основу
+        if found_main_keywords:
+            search_terms = found_main_keywords.copy()
+            
+            # Добавляем дополнительные слова, если они есть
+            for kw in ["ПО КАМПАНИИ", "КАМПАНИЯ", "ОТЧЕТ ПО", "ОТЧЁТ ПО", "СДЕЛАЙ ОТЧЕТ ПО", "ПОКАЖИ ОТЧЕТ ПО", "АНАЛИЗ КАМПАНИИ"]:
+                if kw in question_upper:
+                    part = question_upper.split(kw, 1)[-1].strip()
+                    # Убираем лишние слова
+                    for w in ["ПОКАЖИ", "ОТЧЕТ", "ОТЧЁТ", "АНАЛИЗ", "СТАТИСТИКА", "ДАННЫЕ", "ПО"]:
+                        part = part.replace(w, "").strip()
+                    additional_keywords = [w for w in re.split(r"[\s,()]+", part) if w and len(w) > 1 and w not in found_main_keywords]
+                    search_terms.extend(additional_keywords)
+                    break
+            
+            return list(set(search_terms))  # Убираем дубликаты
+        
+        # Если нет основных ключевых слов, используем стандартную логику
         # Ищем после ключевых слов
         keywords = []
         for kw in ["ПО КАМПАНИИ", "КАМПАНИЯ", "ОТЧЕТ ПО", "ОТЧЁТ ПО", "СДЕЛАЙ ОТЧЕТ ПО", "ПОКАЖИ ОТЧЕТ ПО", "АНАЛИЗ КАМПАНИИ"]:
@@ -474,14 +500,36 @@ class MarketingAnalyticsAgent:
         # Строим условия поиска
         where_conditions = []
         if search_terms and not is_general_stats:
-            # Используем улучшенную логику поиска
-            conditions = self._build_flexible_sql_conditions(search_terms)
-            if conditions:
-                where_conditions.extend(conditions)
+            # Проверяем, есть ли основные ключевые слова (ФРК4, ФРК1 и т.д.)
+            main_keywords = ["фрк4", "фрк1", "фрк2", "фрк3"]
+            found_main_keyword = None
+            for keyword in main_keywords:
+                if keyword in [term.lower() for term in search_terms]:
+                    found_main_keyword = keyword
+                    break
+            
+            if found_main_keyword:
+                # Если есть основной ключевой термин, используем его как основу
+                where_conditions.append(f"UPPER(\"Название кампании\") LIKE '%{found_main_keyword.upper()}%'")
+                
+                # Добавляем дополнительные условия только если они есть в названии
+                additional_terms = [term for term in search_terms if term.lower() not in main_keywords]
+                if additional_terms:
+                    # Используем более мягкую логику - ИЛИ вместо И
+                    additional_conditions = []
+                    for term in additional_terms:
+                        additional_conditions.append(f"UPPER(\"Название кампании\") LIKE '%{term.upper()}%'")
+                    if additional_conditions:
+                        where_conditions.append(f"({' OR '.join(additional_conditions)})")
             else:
-                # Если не удалось построить сложные условия, используем простой LIKE
-                for term in search_terms:
-                    where_conditions.append(f"UPPER(\"Название кампании\") LIKE '%{term.upper()}%'")
+                # Если нет основного ключевого слова, используем стандартную логику
+                conditions = self._build_flexible_sql_conditions(search_terms)
+                if conditions:
+                    where_conditions.extend(conditions)
+                else:
+                    # Если не удалось построить сложные условия, используем простой LIKE
+                    for term in search_terms:
+                        where_conditions.append(f"UPPER(\"Название кампании\") LIKE '%{term.upper()}%'")
         
         # Определяем ORDER BY
         order_by = []
