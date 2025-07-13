@@ -441,24 +441,16 @@ class MarketingAnalyticsAgent:
         
         return list(unique_campaigns)
 
-    def generate_sql_query(self, user_question: str) -> str:
+    def generate_sql_query(self, user_question: str, fallback_main_keyword: str = None) -> str:
         """
         Генерация SQL запроса на основе вопроса пользователя
         """
         question_lower = user_question.lower()
-        
-        # Проверяем, является ли это запросом к воронке или UTM-меткам
-        if self._is_funnel_query(user_question) or self._is_utm_query(user_question):
-            utm_params = self._extract_utm_parameters(user_question)
-            return self._generate_funnel_sql(user_question, utm_params)
-        
-        # Определяем тип запроса
         is_general_stats = any(word in question_lower for word in [
             "общая статистика", "общие показатели", "всего", "итого", 
             "общий расход", "общие показы", "общие клики", "покажи общую статистику",
             "все кампании", "всех кампаний"
         ])
-        
         if is_general_stats:
             select_fields = [
                 "COUNT(DISTINCT \"ID Кампании\") as campaigns_count",
@@ -481,33 +473,24 @@ class MarketingAnalyticsAgent:
                 "ROUND(SUM(\"Расход до НДС\") / SUM(\"Клики\"), 2) as cpc"
             ]
             group_by = ["\"Название кампании\"", "\"Площадка\""]
-        
         # Извлекаем поисковые термины
         search_terms = self._extract_search_terms(user_question)
-        
         # Строим условия поиска
         where_conditions = []
-        if search_terms and not is_general_stats:
-            # Упрощенная логика поиска - ищем по основным ключевым словам
-            main_keywords = ["фрк4", "фрк1", "фрк2", "фрк3"]
-            found_main_keyword = None
-            
-            # Проверяем, есть ли основные ключевые слова
-            for keyword in main_keywords:
-                if keyword in [term.lower() for term in search_terms]:
-                    found_main_keyword = keyword
-                    break
-            
-            if found_main_keyword:
-                # Для основных ключевых слов используем простой поиск
-                where_conditions.append(f"\"Название кампании\" LIKE '%{found_main_keyword.upper()}%'")
-            else:
-                # Для остальных терминов используем простой LIKE
-                for term in search_terms:
-                    if len(term) > 2:  # Игнорируем слишком короткие термины
-                        where_conditions.append(f"\"Название кампании\" LIKE '%{term.upper()}%'")
-        
-        # Определяем ORDER BY
+        main_keywords = ["фрк4", "фрк1", "фрк2", "фрк3"]
+        found_main_keyword = None
+        for keyword in main_keywords:
+            if keyword in [term.lower() for term in search_terms]:
+                found_main_keyword = keyword
+                break
+        if found_main_keyword or fallback_main_keyword:
+            mk = fallback_main_keyword if fallback_main_keyword else found_main_keyword
+            where_conditions.append(f'"Название кампании" LIKE "%{mk.upper()}%"')
+        elif search_terms and not is_general_stats:
+            for term in search_terms:
+                if len(term) > 2:
+                    where_conditions.append(f'"Название кампании" LIKE "%{term.upper()}%"')
+        # ORDER BY и LIMIT
         order_by = []
         if any(word in question_lower for word in ["дорогой", "расход", "стоимость"]):
             order_by.append("cost DESC")
@@ -519,31 +502,22 @@ class MarketingAnalyticsAgent:
             order_by.append("total_cost DESC")
         else:
             order_by.append("\"Название кампании\" ASC")
-        
-        # Определяем LIMIT
         limit_clause = ""
         if any(word in question_lower for word in ["топ", "лучшие", "лучший"]):
             limit_clause = "LIMIT 10"
         elif any(word in question_lower for word in ["первые", "первые 5"]):
             limit_clause = "LIMIT 5"
-        
-        # Собираем SQL запрос
         sql = f"SELECT {', '.join(select_fields)} FROM campaign_metrics"
-        
         if where_conditions:
             sql += f" WHERE {' AND '.join(where_conditions)}"
-        
         if group_by:
             sql += f" GROUP BY {', '.join(group_by)}"
-        
         if order_by:
             sql += f" ORDER BY {', '.join(order_by)}"
-        
         if limit_clause:
             sql += f" {limit_clause}"
-        
         return sql
-    
+
     def execute_query(self, sql_query: str) -> pd.DataFrame:
         """Выполнение SQL запроса и возврат результатов"""
         try:
@@ -562,30 +536,16 @@ class MarketingAnalyticsAgent:
         if df.empty:
             return {"error": "Нет данных для анализа по вашему запросу"}
         
-        # Проверяем, является ли это анализом воронки
-        if self._is_funnel_query(question) or self._is_utm_query(question):
-            return self._analyze_funnel_data(df, question)
-        
-        # Оригинальная логика для campaign_metrics
         columns = df.columns.tolist()
         question_lower = question.lower()
-        
-        # Определяем тип анализа
         is_all_campaigns = any(word in question_lower for word in [
             "все кампании", "всех кампаний", "общая статистика", "общие показы", "общие клики", "покажи общую статистику"
         ])
-        
-        # Определяем тип анализа
         analysis_type = "all_campaigns" if is_all_campaigns else "specific_campaign"
-        
-        # Проверяем, есть ли результативные колонки
         has_result_columns = any(col.startswith('total_') for col in columns)
-        
-        # Анализируем данные
         summary = {}
-        
+        # --- Общие метрики ---
         if has_result_columns:
-            # Общая статистика
             summary = {
                 "analysis_type": "general_stats",
                 "total_impressions": df.iloc[0].get('total_impressions', 0),
@@ -602,18 +562,32 @@ class MarketingAnalyticsAgent:
                 unique_campaigns_count = df['campaign_name'].nunique()
             else:
                 unique_campaigns_count = len(df)
+            total_impressions = df['impressions'].sum() if 'impressions' in df.columns else 0
+            total_clicks = df['clicks'].sum() if 'clicks' in df.columns else 0
+            total_cost = df['cost'].sum() if 'cost' in df.columns else 0
+            total_visits = df['visits'].sum() if 'visits' in df.columns else 0
+            # Производные метрики
+            avg_ctr = round((total_clicks / total_impressions) * 100, 2) if total_impressions > 0 else 0
+            avg_cpc = round(total_cost / total_clicks, 2) if total_clicks > 0 else 0
+            avg_cpa = round(total_cost / total_visits, 2) if total_visits > 0 else 0
+            # ROI и конверсия (если есть доход и целевые действия)
+            total_revenue = df['revenue'].sum() if 'revenue' in df.columns else None
+            roi = round(((total_revenue - total_cost) / total_cost) * 100, 2) if total_revenue is not None and total_cost > 0 else None
+            conversion = round((total_visits / total_clicks) * 100, 2) if total_clicks > 0 else None
             summary = {
                 "analysis_type": analysis_type,
-                "total_impressions": df['impressions'].sum(),
-                "total_clicks": df['clicks'].sum(),
-                "total_cost": df['cost'].sum(),
-                "total_visits": df['visits'].sum(),
-                "avg_ctr": round((df['clicks'].sum() / df['impressions'].sum()) * 100, 2) if df['impressions'].sum() > 0 else 0,
-                "avg_cpc": round(df['cost'].sum() / df['clicks'].sum(), 2) if df['clicks'].sum() > 0 else 0,
+                "total_impressions": total_impressions,
+                "total_clicks": total_clicks,
+                "total_cost": total_cost,
+                "total_visits": total_visits,
+                "avg_ctr": avg_ctr,
+                "avg_cpc": avg_cpc,
+                "avg_cpa": avg_cpa,
+                "roi": roi,
+                "conversion": conversion,
                 "campaigns_count": unique_campaigns_count
             }
-            
-            # Добавляем данные по кампаниям
+            # --- Данные по кампаниям ---
             if 'campaign_name' in columns:
                 campaigns_data = []
                 for _, row in df.iterrows():
@@ -628,15 +602,12 @@ class MarketingAnalyticsAgent:
                         'cpc': row.get('cpc', 0)
                     }
                     campaigns_data.append(campaign_data)
-                
                 summary["campaigns"] = campaigns_data
-                
-                # Сортируем кампании по эффективности
+                # Топ-кампании по CTR
                 if campaigns_data:
                     sorted_campaigns = sorted(campaigns_data, key=lambda x: x.get('ctr', 0), reverse=True)
                     summary["top_campaigns"] = sorted_campaigns[:5]
-            
-            # Анализ по площадкам
+            # --- Анализ по площадкам ---
             if 'platform' in df.columns and 'ctr' in df.columns:
                 platform_stats = df.groupby('platform').agg({
                     'impressions': 'sum',
@@ -646,7 +617,6 @@ class MarketingAnalyticsAgent:
                     'ctr': 'mean',
                     'cpc': 'mean'
                 }).reset_index()
-                
                 platforms_data = []
                 for _, row in platform_stats.iterrows():
                     platform_data = {
@@ -659,150 +629,33 @@ class MarketingAnalyticsAgent:
                         'cpc': row.get('cpc', 0)
                     }
                     platforms_data.append(platform_data)
-                
                 summary["platforms"] = platforms_data
-        
-        # Генерируем инсайты
+        # --- Инсайты и рекомендации ---
         insights = []
-        
         if summary.get('avg_ctr', 0) > 2:
             insights.append("Высокий средний CTR указывает на эффективность рекламных кампаний")
         elif summary.get('avg_ctr', 0) < 0.5:
             insights.append("Низкий CTR требует оптимизации креативов и таргетинга")
-        
         if summary.get('avg_cpc', 0) > 200:
             insights.append("Высокий CPC может указывать на дорогие ключевые слова или неэффективный таргетинг")
         elif summary.get('avg_cpc', 0) < 50:
             insights.append("Экономичный CPC показывает эффективное управление бюджетом")
-        
         if summary.get('total_visits', 0) > summary.get('total_clicks', 0) * 2:
             insights.append("Хорошая конверсия кликов в визиты")
-        
-        # Генерируем рекомендации
+        if summary.get('roi') is not None:
+            if summary['roi'] > 0:
+                insights.append(f"Положительный ROI: {summary['roi']}% — кампании приносят прибыль")
+            else:
+                insights.append(f"Отрицательный ROI: {summary['roi']}% — кампании убыточны")
         recommendations = []
-        
         if summary.get('avg_ctr', 0) < 1:
             recommendations.append("Рекомендуется оптимизировать рекламные креативы для повышения CTR")
-        
         if summary.get('avg_cpc', 0) > 150:
             recommendations.append("Стоит пересмотреть ставки и таргетинг для снижения CPC")
-        
         if summary.get('total_visits', 0) < summary.get('total_clicks', 0):
-            recommendations.append("Низкая конверсия кликов в визиты - проверьте качество трафика")
-        
-        return {
-            "summary": summary,
-            "insights": insights,
-            "recommendations": recommendations
-        }
-    
-    def _analyze_funnel_data(self, df: pd.DataFrame, question: str) -> Dict:
-        """
-        Анализ данных воронки
-        """
-        if df.empty:
-            return {"error": "Нет данных воронки для анализа"}
-        
-        columns = df.columns.tolist()
-        question_lower = question.lower()
-        
-        summary = {
-            "analysis_type": "funnel_analysis"
-        }
-        
-        # Определяем тип анализа воронки
-        if 'metric' in columns and len(df) == 1:
-            # Общая воронка
-            row = df.iloc[0]
-            summary.update({
-                "visits": row.get('visits', 0),
-                "submits": row.get('submits', 0),
-                "accounts_opened": row.get('accounts_opened', 0),
-                "created": row.get('created', 0),
-                "calls_answered": row.get('calls_answered', 0),
-                "quality_leads": row.get('quality_leads', 0),
-                "conversion_to_submits": row.get('conversion_to_submits', 0),
-                "conversion_to_accounts": row.get('conversion_to_accounts', 0),
-                "conversion_to_quality": row.get('conversion_to_quality', 0)
-            })
-        
-        elif 'utm_source' in columns:
-            # Сравнение источников
-            summary["sources_comparison"] = []
-            for _, row in df.iterrows():
-                source_data = {
-                    'utm_source': row.get('utm_source', '—'),
-                    'visits': row.get('visits', 0),
-                    'submits': row.get('submits', 0),
-                    'accounts_opened': row.get('accounts_opened', 0),
-                    'quality_leads': row.get('quality_leads', 0),
-                    'conversion_to_submits': row.get('conversion_to_submits', 0),
-                    'conversion_to_accounts': row.get('conversion_to_accounts', 0),
-                    'conversion_to_quality': row.get('conversion_to_quality', 0)
-                }
-                summary["sources_comparison"].append(source_data)
-        
-        elif 'date' in columns:
-            # Динамика по дням
-            summary["daily_trends"] = []
-            for _, row in df.iterrows():
-                trend_data = {
-                    'date': row.get('date', '—'),
-                    'visits': row.get('visits', 0),
-                    'submits': row.get('submits', 0),
-                    'accounts_opened': row.get('accounts_opened', 0),
-                    'quality_leads': row.get('quality_leads', 0)
-                }
-                summary["daily_trends"].append(trend_data)
-        
-        elif 'utm_campaign' in columns:
-            # Топ кампаний
-            summary["top_campaigns"] = []
-            for _, row in df.iterrows():
-                campaign_data = {
-                    'utm_campaign': row.get('utm_campaign', '—'),
-                    'visits': row.get('visits', 0),
-                    'submits': row.get('submits', 0),
-                    'accounts_opened': row.get('accounts_opened', 0),
-                    'quality_leads': row.get('quality_leads', 0),
-                    'conversion_to_submits': row.get('conversion_to_submits', 0)
-                }
-                summary["top_campaigns"].append(campaign_data)
-        
-        # Генерируем инсайты для воронки
-        insights = []
-        
-        conversion_to_submits = summary.get('conversion_to_submits', 0) or 0
-        conversion_to_accounts = summary.get('conversion_to_accounts', 0) or 0
-        conversion_to_quality = summary.get('conversion_to_quality', 0) or 0
-        
-        if conversion_to_submits > 20:
-            insights.append("Высокая конверсия визитов в заявки - отличные результаты")
-        elif conversion_to_submits < 5:
-            insights.append("Низкая конверсия визитов в заявки - требуется оптимизация")
-        
-        if conversion_to_accounts > 30:
-            insights.append("Хорошая конверсия заявок в открытые счета")
-        elif conversion_to_accounts < 10:
-            insights.append("Низкая конверсия заявок в счета - проверьте процесс оформления")
-        
-        if conversion_to_quality > 50:
-            insights.append("Высокий процент качественных лидов")
-        elif conversion_to_quality < 20:
-            insights.append("Низкий процент качественных лидов - требуется улучшение качества трафика")
-        
-        # Генерируем рекомендации для воронки
-        recommendations = []
-        
-        if summary.get('conversion_to_submits', 0) < 10:
-            recommendations.append("Оптимизируйте лендинги и формы заявок для повышения конверсии")
-        
-        if summary.get('conversion_to_accounts', 0) < 20:
-            recommendations.append("Упростите процесс открытия счетов для повышения конверсии")
-        
-        if summary.get('conversion_to_quality', 0) < 30:
-            recommendations.append("Улучшите таргетинг для привлечения более качественного трафика")
-        
+            recommendations.append("Низкая конверсия кликов в визиты — проверьте качество трафика")
+        if summary.get('roi') is not None and summary['roi'] < 0:
+            recommendations.append("Рекомендуется оптимизировать расходы и повысить эффективность кампаний для выхода в плюс по ROI")
         return {
             "summary": summary,
             "insights": insights,
@@ -1304,127 +1157,51 @@ class MarketingAnalyticsAgent:
     
     def process_question(self, question: str) -> str:
         """
-        Обработка вопроса пользователя с динамическим анализом
+        Обработка вопроса пользователя с fallback-логикой
         """
-        # Проверяем, является ли это запросом к воронке или UTM-меткам
-        is_funnel_query = self._is_funnel_query(question)
-        is_utm_query = self._is_utm_query(question)
-        
-        # Генерируем SQL запрос
         sql_query = self.generate_sql_query(question)
-        
-        # Выполняем запрос
         df = self.execute_query(sql_query)
-        
-        # Проверяем, есть ли данные
         has_data = not df.empty and not (len(df) == 1 and df.iloc[0].get('result') == 'no_data')
-        
-        # Проверяем, спрашивает ли пользователь о терминах/метриках
-        is_asking_about_terms = any(word in question.lower() for word in [
-            'что такое', 'что означает', 'определение', 'расшифровка', 'ctr', 'cpc', 'cpm', 'конверсия'
-        ])
-        
-        # Анализируем данные только если они есть
         analysis = None
+        fallback_tried = False
+        # Fallback: если данных нет, пробуем только по основному ключу
+        if not has_data:
+            search_terms = self._extract_search_terms(question)
+            main_keywords = ["фрк4", "фрк1", "фрк2", "фрк3"]
+            found_main_keyword = None
+            for keyword in main_keywords:
+                if keyword in [term.lower() for term in search_terms]:
+                    found_main_keyword = keyword
+                    break
+            if found_main_keyword:
+                sql_query = self.generate_sql_query(question, fallback_main_keyword=found_main_keyword)
+                df = self.execute_query(sql_query)
+                has_data = not df.empty and not (len(df) == 1 and df.iloc[0].get('result') == 'no_data')
+                fallback_tried = True
         if has_data:
             analysis = self.analyze_data(df, question)
             report = self.generate_report(analysis, question, sql_query)
         else:
-            # Если данных нет, создаем базовый отчет
             report = f"# 📋 Отчет по запросу: {question}\n\n"
-            report += "Нет данных для анализа по вашему запросу.\n\n"
-        
-        # Используем различные LLM для улучшения отчетов
-        should_use_enhancement = not has_data or is_asking_about_terms or has_data
-        
-        # Подготавливаем данные для контекста
-        data_summary = None
-        if has_data and not df.empty:
-            data_summary = {
-                "total_rows": len(df),
-                "total_impressions": df.get("Показы", pd.Series()).sum() if "Показы" in df.columns else 0,
-                "total_clicks": df.get("Клики", pd.Series()).sum() if "Клики" in df.columns else 0,
-                "total_cost": df.get("Расход до НДС", pd.Series()).sum() if "Расход до НДС" in df.columns else 0,
-                "avg_ctr": df.get("CTR", pd.Series()).mean() if "CTR" in df.columns else 0,
-                "avg_cpc": df.get("CPC", pd.Series()).mean() if "CPC" in df.columns else 0
-            }
-        
-        # Приоритет использования LLM для облачного развертывания:
-        # 1. OpenAI GPT (если настроен)
-        # 2. Hugging Face (бесплатный, онлайн)
-        # 3. Локальная RAG система
-        # 4. Простые шаблоны (всегда доступно)
-        
-        enhanced = False
-        
-        # 1. Пробуем OpenAI GPT (если настроен)
-        if should_use_enhancement and self.openai_available and not enhanced:
+            report += "Нет данных для анализа по вашему запросу."
+        # Контекст (RAG) только если вообще нет данных
+        if not has_data:
+            if self.rag_system is not None:
+                try:
+                    enhanced_report = self.rag_system.enhance_report(report, question)
+                    if enhanced_report != report:
+                        report = enhanced_report
+                except Exception as e:
+                    print(f"Ошибка RAG системы: {e}")
+        # LLM-усиление только если есть данные
+        if has_data and self.openai_available:
             try:
-                enhanced_report = self.enhance_report_with_openai(report, question, data_summary)
+                enhanced_report = self.enhance_report_with_openai(report, question, analysis.get('summary', {}))
                 if enhanced_report != report:
                     report = enhanced_report
-                    print("✅ Отчет улучшен с помощью OpenAI GPT")
-                    enhanced = True
             except Exception as e:
                 print(f"Ошибка при обращении к OpenAI: {e}")
-        
-        # 2. Пробуем Hugging Face (бесплатный, онлайн) - основной для облака
-        if should_use_enhancement and FREE_LLM_AVAILABLE and not enhanced:
-            try:
-                enhanced_report = self.enhance_report_with_huggingface(report, question, data_summary)
-                if enhanced_report != report:
-                    report = enhanced_report
-                    print("✅ Отчет улучшен с помощью Hugging Face (бесплатный)")
-                    enhanced = True
-            except Exception as e:
-                print(f"Ошибка при обращении к Hugging Face: {e}")
-        
-        # 3. Пробуем локальную RAG систему (отключаем для отчетов с данными)
-        if should_use_enhancement and self.rag_system is not None and not enhanced and not has_data:
-            try:
-                enhanced_report = self.rag_system.enhance_report(report, question)
-                if enhanced_report != report:
-                    report = enhanced_report
-                    print("✅ Отчет дополнен контекстной информацией")
-                    enhanced = True
-            except Exception as e:
-                print(f"Ошибка RAG системы: {e}")
-        
-        # 4. Используем простые шаблоны (всегда доступно)
-        if should_use_enhancement and not enhanced:
-            try:
-                enhanced_report = self.enhance_report_with_local_llm(report, question, data_summary)
-                if enhanced_report != report:
-                    report = enhanced_report
-                    print("✅ Отчет улучшен с помощью локальных шаблонов")
-                    enhanced = True
-            except Exception as e:
-                print(f"Ошибка локального улучшения: {e}")
-        
-        if not enhanced:
-            print("ℹ️ Отчет не был улучшен внешними LLM, используется базовый отчет")
-        
-        # Сохраняем в историю
-        self.conversation_history.append({
-            "question": question,
-            "answer": report,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        # Генерируем CSV отчет
-        excel_data = self.generate_csv_report(analysis, question)
-        
-        # Генерируем данные для дашборда
-        dashboard_data = None
-        if analysis and "error" not in analysis:
-            try:
-                dashboard_data = self.generate_dashboard_data(analysis)
-            except Exception as e:
-                print(f"Ошибка генерации дашборда: {e}")
-                dashboard_data = None
-        
-        # Возвращаем отчет, SQL запрос, Excel данные и данные дашборда
-        return report, sql_query, excel_data, dashboard_data
+        return report, sql_query, self.generate_csv_report(analysis, question) if analysis else None, self.generate_dashboard_data(analysis) if analysis else None
     
     def generate_csv_report(self, analysis: Dict, question: str) -> bytes:
         """
