@@ -811,7 +811,7 @@ class MarketingAnalyticsAgent:
                     for i, campaign in enumerate(summary["found_campaigns"], 1):
                         report += f"{i}. **{campaign.get('campaign_name', '—')}**\n"
                 else:
-                    report += f"**Всего кампаний:** {len(summary['found_campaigns'])}\n"
+                    report += f"**Всего кампаний:** {summary.get('campaigns_count', 0)}\n"
                     report += "**Основные кампании:**\n"
                     for i, campaign in enumerate(summary["found_campaigns"][:5], 1):
                         report += f"{i}. **{campaign.get('campaign_name', '—')}**\n"
