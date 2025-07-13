@@ -100,7 +100,7 @@ class MarketingAnalyticsAgent:
         return similar_words.get(normalized, [normalized])
 
     def _extract_search_terms(self, question: str) -> list:
-        """Извлечение поисковых терминов с обработкой всех краевых случаев"""
+        """Извлечение поисковых терминов с улучшенной обработкой вариаций"""
         import re
         
         # Нормализуем вопрос
@@ -108,11 +108,11 @@ class MarketingAnalyticsAgent:
         
         # Ищем после ключевых слов
         keywords = []
-        for kw in ["ПО КАМПАНИИ", "КАМПАНИЯ", "ОТЧЕТ ПО", "ОТЧЁТ ПО", "СДЕЛАЙ ОТЧЕТ ПО", "ПОКАЖИ ОТЧЕТ ПО"]:
+        for kw in ["ПО КАМПАНИИ", "КАМПАНИЯ", "ОТЧЕТ ПО", "ОТЧЁТ ПО", "СДЕЛАЙ ОТЧЕТ ПО", "ПОКАЖИ ОТЧЕТ ПО", "АНАЛИЗ КАМПАНИИ"]:
             if kw in question_upper:
                 part = question_upper.split(kw, 1)[-1].strip()
                 # Убираем лишние слова
-                for w in ["ПОКАЖИ", "ОТЧЕТ", "ОТЧЁТ", "АНАЛИЗ", "СТАТИСТИКА", "ДАННЫЕ"]:
+                for w in ["ПОКАЖИ", "ОТЧЕТ", "ОТЧЁТ", "АНАЛИЗ", "СТАТИСТИКА", "ДАННЫЕ", "ПО"]:
                     part = part.replace(w, "").strip()
                 keywords = [w for w in re.split(r"[\s,()]+", part) if w and len(w) > 1]
                 break
@@ -121,21 +121,28 @@ class MarketingAnalyticsAgent:
             # Если не нашли, берём все значимые слова
             keywords = [w for w in re.split(r"[\s,()]+", question_upper) if len(w) > 2]
         
-        # Обрабатываем каждое слово
+        # Обрабатываем каждое слово с улучшенной логикой
         search_terms = []
         for keyword in keywords:
             # Разбиваем составные слова
             words = keyword.split()
             for word in words:
                 if len(word) > 1:  # Игнорируем слишком короткие слова
+                    # Нормализуем слово (убираем дефисы, пробелы)
+                    normalized_word = word.replace('-', '').replace(' ', '')
+                    
                     # Получаем похожие слова для обработки опечаток
-                    similar_words = self._get_similar_words(word)
+                    similar_words = self._get_similar_words(normalized_word)
                     search_terms.extend(similar_words)
+                    
+                    # Добавляем варианты с дефисами и пробелами
+                    if '-' in word or ' ' in word:
+                        search_terms.append(word)
         
         return list(set(search_terms))  # Убираем дубликаты
 
     def _build_flexible_sql_conditions(self, search_terms: list) -> list:
-        """Построение гибких SQL условий для поиска"""
+        """Построение гибких SQL условий для поиска с улучшенной обработкой вариаций"""
         conditions = []
         
         for term in search_terms:
@@ -150,13 +157,27 @@ class MarketingAnalyticsAgent:
             if normalized_term != term:
                 term_conditions.append(f"REPLACE(REPLACE(UPPER(campaign_name), ' ', ''), '-', '') LIKE '%{normalized_term}%'")
             
-            # 3. Поиск по частям слова (для длинных терминов)
+            # 3. Поиск с заменой дефисов на пробелы и наоборот
+            if '-' in term:
+                space_version = term.replace('-', ' ')
+                term_conditions.append(f"UPPER(campaign_name) LIKE '%{space_version}%'")
+            
+            if ' ' in term:
+                dash_version = term.replace(' ', '-')
+                term_conditions.append(f"UPPER(campaign_name) LIKE '%{dash_version}%'")
+            
+            # 4. Поиск по частям слова (для длинных терминов)
             if len(term) > 4:
                 parts = term.split()
                 if len(parts) > 1:
                     for part in parts:
                         if len(part) > 2:
                             term_conditions.append(f"UPPER(campaign_name) LIKE '%{part}%'")
+            
+            # 5. Поиск с игнорированием регистра и специальных символов
+            clean_term = term.replace('-', '').replace(' ', '').replace('_', '')
+            if clean_term != term:
+                term_conditions.append(f"REPLACE(REPLACE(REPLACE(UPPER(campaign_name), ' ', ''), '-', ''), '_', '') LIKE '%{clean_term}%'")
             
             # Объединяем условия для одного термина через OR
             if term_conditions:
@@ -347,43 +368,46 @@ class MarketingAnalyticsAgent:
             utm_params = self._extract_utm_parameters(user_question)
             return self._generate_funnel_sql(user_question, utm_params)
         
-        # Оригинальная логика для campaign_metrics
+        # Определяем тип запроса
+        is_general_stats = any(word in question_lower for word in [
+            "общая статистика", "общие показатели", "всего", "итого", 
+            "общий расход", "общие показы", "общие клики", "покажи общую статистику",
+            "все кампании", "всех кампаний"
+        ])
+        
+        if is_general_stats:
+            select_fields = [
+                "COUNT(DISTINCT campaign_id) as campaigns_count",
+                "SUM(impressions) as total_impressions", 
+                "SUM(clicks) as total_clicks",
+                "SUM(cost_before_vat) as total_cost",
+                "SUM(visits) as total_visits",
+                "ROUND(SUM(clicks) * 100.0 / SUM(impressions), 2) as avg_ctr",
+                "ROUND(SUM(cost_before_vat) / SUM(clicks), 2) as avg_cpc"
+            ]
+            group_by = []
+        else:
+            select_fields = [
+                "campaign_name", "platform", 
+                "SUM(impressions) as impressions", 
+                "SUM(clicks) as clicks", 
+                "SUM(cost_before_vat) as cost", 
+                "SUM(visits) as visits", 
+                "ROUND(SUM(clicks) * 100.0 / SUM(impressions), 2) as ctr", 
+                "ROUND(SUM(cost_before_vat) / SUM(clicks), 2) as cpc"
+            ]
+            group_by = ["campaign_name", "platform"]
+        
         # Извлекаем поисковые термины
         search_terms = self._extract_search_terms(user_question)
         
-        # Определяем тип анализа
-        is_all_campaigns = any(word in question_lower for word in [
-            "все кампании", "всех кампаний", "общая статистика", "общие показы", "общие клики", "покажи общую статистику"
-        ])
-        
-        # Определяем тип анализа
-        analysis_type = "all_campaigns" if is_all_campaigns else "specific_campaign"
-        
-        # Определяем поля для SELECT
-        select_fields = [
-            "campaign_name", "platform", 
-            "SUM(impressions) as impressions", 
-            "SUM(clicks) as clicks", 
-            "SUM(cost_before_vat) as cost", 
-            "SUM(visits) as visits", 
-            "ROUND(SUM(clicks) * 100.0 / SUM(impressions), 2) as ctr", 
-            "ROUND(SUM(cost_before_vat) / SUM(clicks), 2) as cpc"
-        ]
-        
-        # Определяем условия WHERE
+        # Строим условия поиска
         where_conditions = []
-        
-        if not is_all_campaigns:
-            # Ищем конкретную кампанию
-            campaign_name = self._extract_campaign_name(user_question)
-            if campaign_name:
-                # Используем гибкий поиск
-                conditions = self._build_flexible_sql_conditions([campaign_name])
-                if conditions:
-                    where_conditions.extend(conditions)
-        
-        # Определяем GROUP BY
-        group_by = ["campaign_name", "platform"]
+        if search_terms and not is_general_stats:
+            # Используем улучшенную логику поиска
+            conditions = self._build_flexible_sql_conditions(search_terms)
+            if conditions:
+                where_conditions.extend(conditions)
         
         # Определяем ORDER BY
         order_by = []
@@ -393,6 +417,8 @@ class MarketingAnalyticsAgent:
             order_by.append("impressions DESC")
         elif any(word in question_lower for word in ["клики"]):
             order_by.append("clicks DESC")
+        elif is_general_stats:
+            order_by.append("total_cost DESC")
         else:
             order_by.append("campaign_name ASC")
         
