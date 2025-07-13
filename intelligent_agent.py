@@ -185,6 +185,21 @@ class IntelligentMarketingAgent:
         campaign_keywords = ['фрк', 'годовой', 'performance', 'кампания', 'отчет', 'покажи', 'сделай']
         is_campaign_query = any(keyword in question_lower for keyword in campaign_keywords)
         
+        # Если запрос содержит только название кампании (например, "фрк4"), считаем его запросом о кампании
+        if not is_campaign_query and len(question_lower.strip()) <= 10:
+            # Проверяем, есть ли в базе кампании с таким названием
+            try:
+                import sqlite3
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                cursor.execute('SELECT COUNT(*) FROM campaign_metrics WHERE "Название кампании" LIKE ?', (f'%{question_lower.upper()}%',))
+                count = cursor.fetchone()[0]
+                conn.close()
+                if count > 0:
+                    is_campaign_query = True
+            except:
+                pass
+        
         # Проверяем, является ли это запросом о метриках
         metric_keywords = ['ctr', 'cpc', 'конверсия', 'метрика', 'что такое']
         is_metric_query = any(keyword in question_lower for keyword in metric_keywords)
