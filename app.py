@@ -313,7 +313,8 @@ if st.session_state.pending_campaign_select:
                     excel_data = None
             else:
                 # Формируем SQL запрос только для выбранной кампании
-                sql_query = f"SELECT \"Название кампании\" as campaign_name, \"Площадка\" as platform, SUM(\"Показы\") as impressions, SUM(\"Клики\") as clicks, SUM(\"Расход до НДС\") as cost, SUM(\"Визиты\") as visits, ROUND(SUM(\"Клики\") * 100.0 / SUM(\"Показы\"), 2) as ctr, ROUND(SUM(\"Расход до НДС\") / SUM(\"Клики\"), 2) as cpc FROM campaign_metrics WHERE \"Название кампании\" = '{selected_campaign}' GROUP BY \"Название кампании\", \"Площадка\" ORDER BY \"Название кампании\" ASC"
+                # Используем LIKE для более гибкого поиска
+                sql_query = f"SELECT \"Название кампании\" as campaign_name, \"Площадка\" as platform, SUM(\"Показы\") as impressions, SUM(\"Клики\") as clicks, SUM(\"Расход до НДС\") as cost, SUM(\"Визиты\") as visits, ROUND(SUM(\"Клики\") * 100.0 / SUM(\"Показы\"), 2) as ctr, ROUND(SUM(\"Расход до НДС\") / SUM(\"Клики\"), 2) as cpc FROM campaign_metrics WHERE \"Название кампании\" LIKE '%{selected_campaign}%' GROUP BY \"Название кампании\", \"Площадка\" ORDER BY \"Название кампании\" ASC"
                 if agent:
                     df = agent.execute_query(sql_query)
                     analysis = agent.analyze_data(df, f"Сделай отчет по кампании {selected_campaign}")

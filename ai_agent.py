@@ -441,6 +441,10 @@ class MarketingAnalyticsAgent:
             conditions = self._build_flexible_sql_conditions(search_terms)
             if conditions:
                 where_conditions.extend(conditions)
+            else:
+                # Если не удалось построить сложные условия, используем простой LIKE
+                for term in search_terms:
+                    where_conditions.append(f"UPPER(\"Название кампании\") LIKE '%{term.upper()}%'")
         
         # Определяем ORDER BY
         order_by = []
